@@ -6,6 +6,7 @@ import {
 import { Button } from "common/src/styles";
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import ReactTooltip from "react-tooltip";
 import * as yup from "yup";
 import { errorModalDelayMs } from "../../constants";
 import {
@@ -176,7 +177,7 @@ const getPayoutReadyStatus = (
   hasReadyForPayoutBeenExecuted?: boolean
 ): boolean => {
 
-  if(!isDistributionAvailableOnChain || hasReadyForPayoutBeenExecuted) {
+  if (!isDistributionAvailableOnChain || hasReadyForPayoutBeenExecuted) {
     return false;
   }
   return true;
@@ -206,6 +207,13 @@ function InformationTable(props: {
   );
 
   const { signer } = useWallet();
+
+  // todo: get the chain the current round is deployed on
+  const roundChain = 5;
+  const isOnRoundChain: boolean = roundChain.toString() === "1";
+  console.log("isOnRoundChain", { isOnRoundChain, props: props });
+
+  const wrongChainMessage = "You are on the wrong chain. Please switch to the correct chain to finalize the round distribution.";
 
   const handleReadyForPayoutModal = async () => {
     setOpenReadyForPayoutModal(false);
@@ -253,8 +261,8 @@ function InformationTable(props: {
     }, errorModalDelayMs);
   }
 
-  const [finalizingDistributionStatus, setFinalizingDistributionStatus] = useState<ProgressStatus>(ProgressStatus.IN_PROGRESS);
-
+  const [finalizingDistributionStatus, setFinalizingDistributionStatus] =
+    useState<ProgressStatus>(ProgressStatus.IN_PROGRESS);
 
   const readyForPayoutProgressSteps: ProgressStep[] = [
     {
@@ -267,8 +275,8 @@ function InformationTable(props: {
       description: "Just another moment while we finish things up.",
       status:
         finalizingDistributionStatus == ProgressStatus.IS_SUCCESS ?
-        ProgressStatus.IS_SUCCESS:
-        ProgressStatus.NOT_STARTED,
+          ProgressStatus.IS_SUCCESS :
+          ProgressStatus.NOT_STARTED,
     },
   ];
 
@@ -353,15 +361,28 @@ function InformationTable(props: {
           </Button>
         </div>
       ) : null}
-      {payoutReady ? (
+      {/* todo: add disabled={isOnRoundChain} check to the button
+        set up a hover/tooltip to explain why it's disabled
+      */}
+      {!payoutReady ? (
         <>
           <div className="flex justify-end">
             <Button
+              disabled={isOnRoundChain === false}
+              data-tip
+              data-for="finalize-distribution-tooltip"
               onClick={() => setOpenReadyForPayoutModal(true)}
               type="button"
               data-testid="set-ready-for-payout"
               className="flex bg-white text-red-500 hover:bg-red-500 hover:text-white border border-red-500"
             >
+              <ReactTooltip
+                id="finalize-distribution-tooltip"
+                type="dark"
+                effect="solid"
+              >
+                {wrongChainMessage}
+              </ReactTooltip>
               Finalize Results
             </Button>
           </div>
@@ -371,7 +392,8 @@ function InformationTable(props: {
             </span>
           </div>
         </>
-      ) : null}
+      ) : null
+      }
 
       {/* Modals */}
       <InfoModal
@@ -395,7 +417,7 @@ function InformationTable(props: {
         setIsOpen={setOpenErrorModal}
         tryAgainFn={handleReadyForPayoutModal}
       />
-    </div>
+    </div >
   );
 }
 
@@ -501,7 +523,7 @@ function FinalizeRound(props: {
             matchingData={props.matchingDistributionContract}
           />
         </div>
-      ): null}
+      ) : null}
       {!props.useFetchDistributionFromContract ? (
         <div className="w-full pt-12">
           <span className="font-bold" data-testid="finalize-round">
@@ -584,7 +606,7 @@ function FinalizeRound(props: {
             />
           </div>
         </div>
-      ): null}
+      ) : null}
     </>
   );
 }
