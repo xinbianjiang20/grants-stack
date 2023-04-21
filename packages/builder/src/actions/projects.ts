@@ -1,7 +1,6 @@
 import { datadogRum } from "@datadog/browser-rum";
 import { ethers, utils } from "ethers";
 import { Dispatch } from "redux";
-import { convertStatusToText } from "common";
 import {
   Client as AlloClient,
   Application as GrantApplication,
@@ -402,8 +401,7 @@ export const fetchProjectApplicationInRound = async (
 };
 
 export const fetchProjectApplications =
-  (projectID: string, projectChainId: number, reactEnv: any /* ProcessEnv */) =>
-  async (dispatch: Dispatch) => {
+  (projectID: string, projectChainId: number) => async (dispatch: Dispatch) => {
     dispatch({
       type: PROJECT_APPLICATIONS_LOADING,
       projectID,
@@ -415,6 +413,8 @@ export const fetchProjectApplications =
       return;
     }
 
+    const boundFetch = fetch.bind(window);
+
     const apps = await Promise.all(
       web3Provider.chains.map(async (chain: { id: number }) => {
         try {
@@ -425,53 +425,41 @@ export const fetchProjectApplications =
             addresses.projectRegistry!
           );
 
-          const response: any = await graphqlFetch(
-            `query roundApplications($projectID: String) {
-            roundApplications(where: { project: $projectID }) {
-              status
-              round {
-                id
-              }
-              metaPtr {
-                pointer
-                protocol
-              }
-            }
-          }
-          `,
-            chain.id,
-            {
-              projectID: projectApplicationID,
-            },
-            reactEnv
+          const client = new AlloClient(
+            boundFetch,
+              process.env.REACT_APP_ALLO_API_URL ?? "",
+            chain.id
+          );
+          const rounds = await client.getRounds();
+
+          console.log("projectApplicationID", projectApplicationID);
+
+          const grantApplications = await Promise.all(
+            rounds.map((round) =>
+              client.getRoundApplicationBy(round.id, "id", projectApplicationID)
+            )
           );
 
-          if (response.errors) {
-            datadogRum.addError(response.error, { projectID });
-            console.error(response.error);
-            return [];
-          }
+          const updatedApplications = grantApplications
+            .filter((app) => Boolean(app))
+            .map((app) => {
+              if (!app) {
+                return null;
+              }
 
-          const applications = response.data.roundApplications.map(
-            (application: any) => ({
-              status: convertStatusToText(application.status),
-              roundID: application.round.id,
-              chainId: chain.id,
-              metaPtr: application.metaPtr,
-            })
-          );
-
-          if (applications.length === 0) {
-            return [];
-          }
+              return {
+                ...app,
+                chainId: chain.id,
+              };
+            });
 
           dispatch({
             type: PROJECT_APPLICATIONS_LOADED,
             projectID,
-            applications,
+            applications: updatedApplications,
           });
 
-          return applications;
+          return updatedApplications;
         } catch (error: any) {
           datadogRum.addError(error, { projectID });
           console.error(error);
@@ -481,10 +469,12 @@ export const fetchProjectApplications =
       })
     );
 
+    const resolvedApps = await Promise.all(apps);
+
     dispatch({
       type: PROJECT_APPLICATIONS_LOADED,
       projectID,
-      applications: apps.flat(),
+      applications: resolvedApps.flat(),
     });
   };
 
