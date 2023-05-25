@@ -15,9 +15,9 @@ import { ReactComponent as Search } from "../../assets/search-grey.svg";
 import { useCart } from "../../context/CartContext";
 import { useRoundById } from "../../context/RoundContext";
 import { Project, Requirement, Round } from "../api/types";
-import { payoutTokens } from "../api/utils";
+import { CHAINS, payoutTokens } from "../api/utils";
 import ConfirmationModal from "../common/ConfirmationModal";
-import Footer from "../common/Footer";
+import Footer from "common/src/components/Footer";
 import Navbar from "../common/Navbar";
 import NotFoundPage from "../common/NotFoundPage";
 import PassportBanner from "../common/PassportBanner";
@@ -108,7 +108,9 @@ function BeforeRoundStart(props: {
             )}
           />
         </main>
-        <Footer />
+        <div className="my-11">
+          <Footer />
+        </div>
       </div>
     </>
   );
@@ -221,7 +223,7 @@ function AfterRoundStart(props: {
       name: round.roundMetadata?.name,
       path: `/round/${chainId}/${roundId}`,
     },
-  ] as BreadcrumbItem[]
+  ] as BreadcrumbItem[];
 
   return (
     <>
@@ -239,22 +241,14 @@ function AfterRoundStart(props: {
         </div>
       )}
       <div className="relative top-16 lg:mx-20 px-4 py-7 h-screen">
-        <div 
-          className="flex flex-col pb-4"
-          data-testid="bread-crumbs"
-        >
-          <Breadcrumb
-            items={breadCrumbs}
-          />
+        <div className="flex flex-col pb-4" data-testid="bread-crumbs">
+          <Breadcrumb items={breadCrumbs} />
         </div>
         <main>
-          <p 
-            data-testid="round-title" 
-            className="text-3xl my-5"
-          >
+          <p data-testid="round-title" className="text-3xl my-5">
             {round.roundMetadata?.name}
           </p>
-          <div className="flex text-grey-400 mb-3">
+          <div className="flex text-grey-400 mb-1">
             <p className="mr-4 text-sm">
               <span className="mr-1">Round starts on:</span>
               <span className="mr-1">
@@ -272,6 +266,18 @@ function AfterRoundStart(props: {
               <span>{getUTCTime(round.roundEndTime)}</span>
             </p>
           </div>
+
+          <p className="text-grey-400 text-sm flex gap-2 mb-4">
+            <span>Deployed on:</span>
+            <div className="flex">
+              <img
+                className="w-4 h-4 mt-0.5 mr-1"
+                src={CHAINS[Number(chainId)]?.logo}
+                alt="Round Chain Logo"
+              />
+              <span>{CHAINS[Number(chainId)]?.name}</span>
+            </div>
+          </p>
 
           <p className="text-1xl mb-4">
             Matching funds available: &nbsp;
@@ -307,7 +313,9 @@ function AfterRoundStart(props: {
             />
           )}
         </main>
-        <Footer />
+        <div className="my-11">
+          <Footer />
+        </div>
       </div>
     </>
   );
@@ -608,7 +616,7 @@ const ApplyButton = (props: { applicationURL: string }) => {
     <Button
       type="button"
       onClick={() => window.open(applicationURL, "_blank")}
-      className="mt-2 basis-full items-center justify-center shadow-sm text-sm rounded bg-white text-black border-2 border-gray-200 md:h-12 hover:border-violet-400"
+      className="mt-2 basis-full items-center justify-center shadow-sm text-sm rounded md:h-12"
       data-testid="apply-button"
     >
       Apply to Grant Round

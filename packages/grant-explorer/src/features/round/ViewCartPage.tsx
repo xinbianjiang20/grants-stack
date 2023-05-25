@@ -34,7 +34,7 @@ import {
 import { getPayoutTokenOptions } from "../api/utils";
 import ConfirmationModal from "../common/ConfirmationModal";
 import ErrorModal from "../common/ErrorModal";
-import Footer from "../common/Footer";
+import Footer from "common/src/components/Footer";
 import InfoModal from "../common/InfoModal";
 import Navbar from "../common/Navbar";
 import PassportBanner from "../common/PassportBanner";
@@ -260,10 +260,10 @@ export default function ViewCart() {
       path: `/round/${chainId}/${roundId}`,
     },
     {
-      name: "Cart", 
+      name: "Cart",
       path: `/round/${chainId}/${roundId}/cart`,
     },
-  ] as BreadcrumbItem[]
+  ] as BreadcrumbItem[];
 
   return (
     <>
@@ -272,8 +272,7 @@ export default function ViewCart() {
         isBeforeRoundEndDate={isBeforeRoundEndDate}
       />
       {isBeforeRoundEndDate && (
-        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-        <PassportBanner chainId={chainId!} round={round} />
+        <PassportBanner chainId={chainId as string} round={round} />
       )}
       {isAfterRoundEndDate && (
         <div>
@@ -282,13 +281,8 @@ export default function ViewCart() {
       )}
       {}
       <div className="relative top-16 lg:mx-20 h-screen px-4 py-7">
-        <div 
-          className="flex flex-col pb-4"
-          data-testid="bread-crumbs"
-        >
-          <Breadcrumb
-            items={breadCrumbs}
-          />
+        <div className="flex flex-col pb-4" data-testid="bread-crumbs">
+          <Breadcrumb items={breadCrumbs} />
         </div>
         <main>
           {Header()}
@@ -297,7 +291,9 @@ export default function ViewCart() {
             {SummaryContainer()}
           </div>
         </main>
-        <Footer />
+        <div className="my-11">
+          <Footer />
+        </div>
       </div>
     </>
   );
@@ -410,7 +406,6 @@ export default function ViewCart() {
   function Header() {
     return (
       <div>
-
         <h1 className="text-3xl mt-5 font-thin border-b-2 pb-2">Cart</h1>
 
         <p className="mt-5">
@@ -474,6 +469,7 @@ export default function ViewCart() {
                 project={project}
                 index={key}
                 roundRoutePath={`/round/${chainId}/${roundId}`}
+                last={key === cart.length - 1}
               />
             </div>
           ))}
@@ -487,6 +483,7 @@ export default function ViewCart() {
       project: Project;
       index: number;
       roundRoutePath: string;
+      last?: boolean;
     }
   ) {
     const { project, roundRoutePath } = props;
@@ -495,7 +492,10 @@ export default function ViewCart() {
     const inputID = "input-" + props.index;
 
     return (
-      <div data-testid="cart-project" className="border-b-2 border-grey-100">
+      <div
+        data-testid="cart-project"
+        className={props.last ? "" : `border-b-2 border-grey-100`}
+      >
         <div className="mb-4 flex flex-col md:flex-row justify-between px-3 py-4 rounded-md">
           <div className="flex">
             <div className="relative overflow-hidden bg-no-repeat bg-cover  min-w-[64px] w-16 max-h-[64px] mt-auto mb-auto">
@@ -977,7 +977,12 @@ export default function ViewCart() {
           <strong>if</strong>you are using an ERC20 token:
         </p>
         <ul className="list-disc list-inside pl-3 pt-3">
-          <li>Approving the contract to access your wallet</li>
+          <li>
+            Approving the token allowance
+            <i>
+              (If you have approved enough amount previously, this step will be automatically skipped)
+            </i>
+          </li>
           <li>Approving the transaction</li>
         </ul>
       </div>
