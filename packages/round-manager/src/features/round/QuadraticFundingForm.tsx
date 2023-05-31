@@ -7,7 +7,7 @@ import {
 import { yupResolver } from "@hookform/resolvers/yup";
 import { classNames } from "common";
 import { Input } from "common/src/styles";
-import _ from 'lodash';
+import _ from "lodash";
 import { Fragment, useContext, useState } from "react";
 import {
   Control,
@@ -20,7 +20,7 @@ import {
 } from "react-hook-form";
 import ReactTooltip from "react-tooltip";
 import * as yup from "yup";
-import { Round } from "../api/types";
+import { Round as OriginalRound } from "../api/types";
 import { PayoutToken, getPayoutTokenOptions } from "../api/utils";
 import { useWallet } from "../common/Auth";
 import { FormStepper } from "../common/FormStepper";
@@ -29,20 +29,29 @@ interface QuadraticFundingFormProps {
   stepper: typeof FormStepper;
 }
 
+type Round = OriginalRound & {
+  roundMetadata: {
+    quadraticFundingConfig: {
+      enableMatchingCap: boolean;
+      enableMinContribution: boolean;
+    };
+  };
+};
+
 export const FundingValidationSchema = yup.object().shape({
   roundMetadata: yup.object().shape({
     quadraticFundingConfig: yup.object({
-      matchingFundsAvailable: yup
+      matchAmount: yup
         .number()
         .typeError("Matching funds available must be a valid number.")
         .moreThan(0, "Matching funds available must be more than zero."),
-      matchingCap: yup
+      enableMatchingCap: yup
         .boolean()
         .required("You must select if you want a matching cap for projects."),
-      matchingCapAmount: yup
+      matchingCapPercentage: yup
         .number()
         .transform((value) => (isNaN(value) ? 0 : value))
-        .when("matchingCap", {
+        .when("enableMatchingCap", {
           is: true,
           then: yup
             .number()
@@ -53,13 +62,13 @@ export const FundingValidationSchema = yup.object().shape({
               "Matching cap amount must be less than or equal to 100%."
             ),
         }),
-      minDonationThreshold: yup
+      enableMinContribution: yup
         .boolean()
         .required("You must select if you want a minimum donation threshold."),
-      minDonationThresholdAmount: yup
+      minContributionAmountUSD: yup
         .number()
         .transform((value) => (isNaN(value) ? 0 : value))
-        .when("minDonationThreshold", {
+        .when("enableMinContribution", {
           is: true,
           then: yup
             .number()
@@ -68,7 +77,7 @@ export const FundingValidationSchema = yup.object().shape({
             )
             .moreThan(0, "Minimum donation threshold must be more than zero."),
         }),
-      sybilDefense: yup
+      enablePassport: yup
         .boolean()
         .required("You must select if you want to use sybil defense."),
     }),
@@ -88,10 +97,10 @@ export default function QuadraticFundingForm(props: QuadraticFundingFormProps) {
   const initialQuadraticFundingConfig: Round["roundMetadata"]["quadraticFundingConfig"] =
     // @ts-expect-error Needs refactoring/typing as a whole
     formData?.roundMetadata.quadraticFundingConfig ?? {
-      matchingFundsAvailable: 0,
-      matchingCap: false,
-      minDonationThreshold: false,
-      sybilDefense: true,
+      matchAmount: 0,
+      matchingCapPercentage: false,
+      minContributionAmountUSD: false,
+      enablePassport: true,
     };
 
   const { chain } = useWallet();
@@ -156,7 +165,7 @@ export default function QuadraticFundingForm(props: QuadraticFundingFormProps) {
                 <MatchingFundsAvailable
                   errors={errors}
                   register={register(
-                    "roundMetadata.quadraticFundingConfig.matchingFundsAvailable",
+                    "roundMetadata.quadraticFundingConfig.matchAmount",
                     {
                       valueAsNumber: true,
                     }
@@ -174,7 +183,7 @@ export default function QuadraticFundingForm(props: QuadraticFundingFormProps) {
                 <MatchingCap
                   errors={errors}
                   registerMatchingCapAmount={register(
-                    "roundMetadata.quadraticFundingConfig.matchingCapAmount",
+                    "roundMetadata.quadraticFundingConfig.matchingCapPercentage",
                     {
                       valueAsNumber: true,
                     }
@@ -195,7 +204,7 @@ export default function QuadraticFundingForm(props: QuadraticFundingFormProps) {
                 <MinDonationThreshold
                   errors={errors}
                   registerMinDonationThreshold={register(
-                    "roundMetadata.quadraticFundingConfig.minDonationThresholdAmount",
+                    "roundMetadata.quadraticFundingConfig.minContributionAmountUSD",
                     {
                       valueAsNumber: true,
                     }
@@ -234,8 +243,8 @@ export default function QuadraticFundingForm(props: QuadraticFundingFormProps) {
               <p className="text-grey-400 mb-2 mt-1 text-sm">
                 Ensure that project supporters are not bots or sybil with
                 Gitcoin Passport. Learn more about Gitcoin Passport{" "}
-                <a 
-                  href="https://docs.passport.gitcoin.co/overview/readme" 
+                <a
+                  href="https://docs.passport.gitcoin.co/overview/readme"
                   className="text-violet-300"
                   target="_blank"
                   rel="noopener noreferrer"
@@ -248,7 +257,7 @@ export default function QuadraticFundingForm(props: QuadraticFundingFormProps) {
                 <SybilDefense
                   errors={errors}
                   registerMatchingCapAmount={register(
-                    "roundMetadata.quadraticFundingConfig.sybilDefense"
+                    "roundMetadata.quadraticFundingConfig.enablePassport"
                   )}
                   control={control}
                 />
@@ -469,7 +478,7 @@ function MatchingFundsAvailable(props: {
   return (
     <div className="col-span-6 sm:col-span-3">
       <div className="flex justify-between">
-        <label htmlFor="matchingFundsAvailable" className="text-sm">
+        <label htmlFor="matchAmount" className="text-sm">
           Matching Funds Available
         </label>
         <span className="text-right text-violet-400 float-right text-xs mt-1">
@@ -484,10 +493,9 @@ function MatchingFundsAvailable(props: {
             "block w-full rounded-md border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm h-10"
           }
           type="number"
-          id={"roundMetadata.matchingFunds.matchingFundsAvailable"}
+          id={"roundMetadata.matchingFunds.matchAmount"}
           $hasError={
-            props.errors?.roundMetadata?.quadraticFundingConfig
-              ?.matchingFundsAvailable
+            props.errors?.roundMetadata?.quadraticFundingConfig?.matchAmount
           }
           placeholder="Enter the amount in chosen payout token."
           data-testid="matching-funds-available"
@@ -504,12 +512,11 @@ function MatchingFundsAvailable(props: {
           </span>
         </div>
       </div>
-      {props.errors.roundMetadata?.quadraticFundingConfig
-        ?.matchingFundsAvailable && (
+      {props.errors.roundMetadata?.quadraticFundingConfig?.matchAmount && (
         <p className="text-xs text-pink-500">
           {
-            props.errors.roundMetadata?.quadraticFundingConfig
-              ?.matchingFundsAvailable.message
+            props.errors.roundMetadata?.quadraticFundingConfig?.matchAmount
+              .message
           }
         </p>
       )}
@@ -525,7 +532,7 @@ function MatchingCap(props: {
   payoutTokenOptions: PayoutToken[];
 }) {
   const { field: matchingCapField } = useController({
-    name: "roundMetadata.quadraticFundingConfig.matchingCap",
+    name: "roundMetadata.quadraticFundingConfig.enableMatchingCap",
     defaultValue: false,
     control: props.control,
     rules: {
@@ -536,7 +543,7 @@ function MatchingCap(props: {
   // get matching cap amount from form
 
   const amt = useWatch({
-    name: "roundMetadata.quadraticFundingConfig.matchingCapAmount",
+    name: "roundMetadata.quadraticFundingConfig.matchingCapPercentage",
     control: props.control,
   });
 
@@ -545,7 +552,7 @@ function MatchingCap(props: {
   >(amt?.toString());
 
   const matchingFunds = useWatch({
-    name: "roundMetadata.quadraticFundingConfig.matchingFundsAvailable",
+    name: "roundMetadata.quadraticFundingConfig.matchAmount",
     control: props.control,
   });
 
@@ -661,7 +668,7 @@ function MatchingCap(props: {
             $hasError={
               isMatchingCap &&
               props.errors?.roundMetadata?.quadraticFundingConfig
-                ?.matchingCapAmount
+                ?.matchingCapPercentage
             }
             type="number"
             id={"matchingCapAmount"}
@@ -680,14 +687,14 @@ function MatchingCap(props: {
         </div>
         {isMatchingCap &&
           props.errors?.roundMetadata?.quadraticFundingConfig
-            ?.matchingCapAmount && (
+            ?.matchingCapPercentage && (
             <p
               className="text-xs text-pink-500"
               data-testid="matching-cap-error"
             >
               {
                 props.errors.roundMetadata?.quadraticFundingConfig
-                  ?.matchingCapAmount?.message
+                  ?.matchingCapPercentage?.message
               }
             </p>
           )}
@@ -716,7 +723,7 @@ function MinDonationThreshold(props: {
   control?: Control<Round>;
 }) {
   const { field: minDonationThresholdField } = useController({
-    name: "roundMetadata.quadraticFundingConfig.minDonationThreshold",
+    name: "roundMetadata.quadraticFundingConfig.enableMinContribution",
     defaultValue: false,
     control: props.control,
     rules: {
@@ -727,7 +734,7 @@ function MinDonationThreshold(props: {
 
   // watch for minDonationAmount
   const amt = useWatch({
-    name: "roundMetadata.quadraticFundingConfig.minDonationThresholdAmount",
+    name: "roundMetadata.quadraticFundingConfig.minContributionAmountUSD",
     control: props.control,
   });
   const [minDonationAmount, setMinDonationAmount] = useState(amt);
@@ -762,7 +769,7 @@ function MinDonationThreshold(props: {
               effect="solid"
             >
               <p className="text-xs">
-                Set a minimum amount for each <br /> 
+                Set a minimum amount for each <br />
                 donation to be eligible for matching.
               </p>
             </ReactTooltip>
@@ -842,7 +849,7 @@ function MinDonationThreshold(props: {
             $hasError={
               isMinDonation &&
               props.errors?.roundMetadata?.quadraticFundingConfig
-                ?.matchingCapAmount
+                ?.matchingCapPercentage
             }
             type="number"
             id={"minDonationAmount"}
@@ -858,11 +865,11 @@ function MinDonationThreshold(props: {
         </div>
         {isMinDonation &&
           props.errors?.roundMetadata?.quadraticFundingConfig
-            ?.minDonationThresholdAmount && (
+            ?.enableMinContribution && (
             <p className="text-xs text-pink-500">
               {
                 props.errors.roundMetadata?.quadraticFundingConfig
-                  ?.minDonationThresholdAmount?.message
+                  ?.minContributionAmountUSD?.message
               }
             </p>
           )}
@@ -884,7 +891,7 @@ function SybilDefense(props: {
   control?: Control<Round>;
 }) {
   const { field: sybilDefenseField } = useController({
-    name: "roundMetadata.quadraticFundingConfig.sybilDefense",
+    name: "roundMetadata.quadraticFundingConfig.enablePassport",
     defaultValue: false,
     control: props.control,
     rules: {

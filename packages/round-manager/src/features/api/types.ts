@@ -156,12 +156,10 @@ export interface Round {
       requirements: { requirement: string }[];
     };
     quadraticFundingConfig: {
-      matchingFundsAvailable: number;
-      matchingCap: boolean;
-      matchingCapAmount?: number;
-      minDonationThreshold?: boolean;
-      minDonationThresholdAmount?: number;
-      sybilDefense?: boolean;
+      matchAmount: number;
+      matchingCapPercentage?: number;
+      minContributionAmountUSD?: number;
+      enablePassport?: boolean;
     };
     support?: {
       type: string;

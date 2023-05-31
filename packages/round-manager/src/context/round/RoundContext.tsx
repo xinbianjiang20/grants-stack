@@ -170,6 +170,7 @@ export const useRoundById = (roundId?: string) => {
   }, [provider, roundId, context.dispatch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const round = context.state.data.find((round) => round.id === roundId);
+
   return {
     round,
     fetchRoundStatus: context.state.fetchRoundStatus,
