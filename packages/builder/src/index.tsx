@@ -24,7 +24,7 @@ import { slugs } from "./routes";
 import setupStore from "./store";
 import "./styles/index.css";
 import initDatadog from "./utils/datadog";
-import wagmiClient, { chains } from "./utils/wagmi";
+import wagmiConfig, { chains } from "./utils/wagmi";
 import initTagmanager from "./tagmanager";
 
 const store = setupStore();
@@ -88,7 +88,7 @@ if (pathname && pathname !== window.location.pathname) {
 
 root.render(
   <ErrorBoundary>
-    <WagmiConfig client={wagmiClient}>
+    <WagmiConfig config={wagmiConfig}>
       <RainbowKitProvider chains={chains} theme={gtcLightTheme} coolMode>
         <ChakraProvider resetCSS={false}>
           <Provider store={store}>
