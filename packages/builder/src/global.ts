@@ -1,7 +1,9 @@
-import { Provider } from "@wagmi/core";
+import { PublicClient } from "@wagmi/core";
+import ethers from "ethers";
 
 export interface Global {
-  web3Provider: Provider | undefined;
+  web3Provider: ethers.providers.Provider | undefined;
+  publicClient: PublicClient | undefined;
   signer: any | undefined;
   chainID: number | undefined;
   address: string | undefined;
@@ -9,6 +11,7 @@ export interface Global {
 
 export const global: Global = {
   web3Provider: undefined,
+  publicClient: undefined,
   signer: undefined,
   chainID: undefined,
   address: undefined,
