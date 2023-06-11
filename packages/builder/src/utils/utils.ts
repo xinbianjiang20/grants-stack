@@ -59,9 +59,9 @@ export const getProjectURIComponents = (id: string) => {
 };
 
 export const getProviderByChainId = (chainId: number) => {
-  const { web3Provider } = global;
+  const { publicClient } = global;
 
-  const chainConfig = web3Provider?.chains?.find(
+  const chainConfig = publicClient?.chains?.find(
     // Yes, parameter type for chainId is number, but sometimes we pass it as a string
     // so adding a cast to Number just in case
     (i) => i.id === Number(chainId)
@@ -72,7 +72,9 @@ export const getProviderByChainId = (chainId: number) => {
   }
 
   // TODO: Create a more robust RPC here to avoid fails
-  return ethers.getDefaultProvider(chainConfig.rpcUrls.default);
+  return new ethers.providers.JsonRpcProvider(
+    chainConfig.rpcUrls.default.http[0]
+  );
 };
 
 export const getAddressType = async (address: string): Promise<AddressType> => {
