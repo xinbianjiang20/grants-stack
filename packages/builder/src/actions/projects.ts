@@ -335,8 +335,8 @@ export const loadProjects =
 
 export const loadAllChainsProjects =
   (withMetaData?: boolean) => async (dispatch: Dispatch) => {
-    const { web3Provider } = global;
-    web3Provider?.chains?.forEach((chainID: { id: number }) => {
+    const { publicClient } = global;
+    publicClient?.chains?.forEach((chainID: { id: number }) => {
       dispatch(projectsLoading(chainID.id));
       dispatch<any>(loadProjects(chainID.id, withMetaData));
     });
@@ -405,14 +405,14 @@ export const fetchProjectApplications =
       projectID,
     });
 
-    const { web3Provider } = global;
+    const { publicClient } = global;
 
-    if (!web3Provider?.chains) {
+    if (!publicClient?.chains) {
       return;
     }
 
     const apps = await Promise.all(
-      web3Provider.chains.map(async (chain: { id: number }) => {
+      publicClient.chains.map(async (chain: { id: number }) => {
         try {
           const addresses = addressesByChainID(projectChainId);
           const projectApplicationID = generateUniqueRoundApplicationID(
