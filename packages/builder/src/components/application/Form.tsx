@@ -10,7 +10,7 @@ import { renderToHTML } from "common";
 import { Fragment, useEffect, useState } from "react";
 import { shallowEqual, useDispatch, useSelector } from "react-redux";
 import { Link } from "react-router-dom";
-import { useEnsName, useNetwork } from "wagmi";
+import { useEnsName, useNetwork, Address } from "wagmi";
 import { ValidationError } from "yup";
 import { fetchProjectApplicationInRound } from "../../actions/projects";
 import { resetApplicationError } from "../../actions/roundApplication";
@@ -125,12 +125,12 @@ function AboutProject(props: {
   );
 
   const recipientQuestion = questions.find((item) => item.type === "recipient");
-  const recipient = recipientQuestion
-    ? answers[recipientQuestion.id.toString()].toString()
-    : undefined;
+  const recipient: Address = recipientQuestion
+    ? (answers[recipientQuestion.id.toString()].toString() as Address)
+    : "0x";
 
   const { data: ensName } = useEnsName({
-    address: recipient ?? "",
+    address: recipient,
   });
 
   return (
