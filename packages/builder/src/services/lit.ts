@@ -1,6 +1,5 @@
 import { ethers } from "ethers";
 import { Buffer } from "buffer";
-import { Provider } from "@wagmi/core";
 import { isJestRunning } from "common";
 import { global } from "../global";
 
@@ -31,7 +30,7 @@ type LitInit = {
   contract: string;
 };
 
-interface LitProvider extends Provider {
+interface LitProvider extends ethers.providers.BaseProvider {
   listAccounts?: () => string[];
   getSigner?: () => any;
 }
@@ -90,7 +89,8 @@ export default class Lit {
   async encryptString(content: string) {
     const client = await getClient();
 
-    const litProvider: LitProvider = global.web3Provider as Provider;
+    const litProvider: LitProvider =
+      global.web3Provider as ethers.providers.BaseProvider;
 
     litProvider.getSigner = () => global.signer;
     litProvider.listAccounts = () => [global.address as string];

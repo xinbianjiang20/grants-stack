@@ -1,5 +1,5 @@
 import { Chain, connectorsForWallets } from "@rainbow-me/rainbowkit";
-import { WagmiConfig, createConfig, configureChains } from "wagmi";
+import { createConfig, configureChains } from "wagmi";
 
 import {
   mainnet,
