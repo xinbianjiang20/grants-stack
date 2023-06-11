@@ -1,6 +1,11 @@
 import { useSelector, useDispatch } from "react-redux";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { useAccount, useProvider, useSigner, useNetwork } from "wagmi";
+import {
+  useAccount,
+  usePublicClient,
+  useWalletClient,
+  useNetwork,
+} from "wagmi";
 import { useEffect } from "react";
 import { Link } from "react-router-dom";
 import { RootState } from "../../reducers";
@@ -47,21 +52,27 @@ function Landing() {
   }));
   const { address, isConnected } = useAccount();
   const { chain } = useNetwork();
-  const provider = useProvider();
-  const { data: signer } = useSigner();
+  const publicClient = usePublicClient();
+  const { data: walletClient } = useWalletClient();
 
   // dispatch initializeWeb3 when address changes
   useEffect(() => {
     // FIXME: getAddress is checked to be sure the signer object is not the one deserialized from the queries cache.
     // it can be removed when wagmi-dev/wagmi/pull/904 has been merged
-    if (signer && "getAddress" in signer && provider && chain && address) {
-      dispatch(initializeWeb3(signer, provider, chain, address));
+    if (
+      walletClient &&
+      "getAddress" in walletClient &&
+      publicClient &&
+      chain &&
+      address
+    ) {
+      dispatch(initializeWeb3(walletClient, publicClient, chain, address));
     }
-  }, [signer, provider, chain, address]);
+  }, [walletClient, publicClient, chain, address]);
 
   if (
     props.web3Initializing &&
-    (signer || chain || address) &&
+    (walletClient || chain || address) &&
     !props.web3Error
   ) {
     return null;
