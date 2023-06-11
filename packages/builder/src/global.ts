@@ -2,7 +2,7 @@ import { PublicClient, WalletClient, Chain } from "@wagmi/core";
 import ethers from "ethers";
 
 export interface Global {
-  web3Provider: ethers.providers.Provider | undefined;
+  web3Provider: ethers.providers.Web3Provider | undefined;
   publicClient: PublicClient | undefined;
   walletClient: WalletClient | undefined;
   signer: any | undefined;

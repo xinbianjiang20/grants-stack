@@ -1,4 +1,6 @@
 import { Dispatch } from "redux";
+import { ethers } from "ethers";
+import { PublicClient, WalletClient, Chain } from "@wagmi/core";
 import { global } from "../global";
 import { chains } from "../contracts/deployments";
 
@@ -8,6 +10,18 @@ export enum Web3Type {
   Generic,
   Remote,
   Status,
+}
+
+class WagmiProviderWrapper {
+  private walletClient: WalletClient;
+
+  constructor(walletClient: WalletClient) {
+    this.walletClient = walletClient;
+  }
+
+  request(args: any) {
+    return this.walletClient.transport.request(args);
+  }
 }
 
 export const WEB3_INITIALIZING = "WEB3_INITIALIZING";
@@ -91,7 +105,12 @@ export const web3AccountDisconnected = (account: string): Web3Actions => ({
 });
 
 export const initializeWeb3 =
-  (walletClient: any, publicClient: any, chain: any, address: string) =>
+  (
+    walletClient: WalletClient,
+    publicClient: PublicClient,
+    chain: Chain,
+    address: string
+  ) =>
   (dispatch: Dispatch) => {
     let t: Web3Type;
     if (window.ethereum) {
@@ -113,7 +132,10 @@ export const initializeWeb3 =
 
     global.publicClient = publicClient;
     global.walletClient = walletClient;
-    global.chain = chain;
+    global.web3Provider = new ethers.providers.Web3Provider(
+      new WagmiProviderWrapper(walletClient)
+    );
+    global.signer = global.web3Provider.getSigner();
     global.address = address;
 
     dispatch(web3Initialized(t));
