@@ -58,14 +58,7 @@ function Landing() {
   // dispatch initializeWeb3 when address changes
   useEffect(() => {
     // FIXME: getAddress is checked to be sure the signer object is not the one deserialized from the queries cache.
-    // it can be removed when wagmi-dev/wagmi/pull/904 has been merged
-    if (
-      walletClient &&
-      "getAddress" in walletClient &&
-      publicClient &&
-      chain &&
-      address
-    ) {
+    if (walletClient && publicClient && chain && address) {
       dispatch(initializeWeb3(walletClient, publicClient, chain, address));
     }
   }, [walletClient, publicClient, chain, address]);

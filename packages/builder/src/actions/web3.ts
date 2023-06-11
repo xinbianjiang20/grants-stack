@@ -91,7 +91,7 @@ export const web3AccountDisconnected = (account: string): Web3Actions => ({
 });
 
 export const initializeWeb3 =
-  (signer: any, provider: any, chain: any, address: string) =>
+  (walletClient: any, publicClient: any, chain: any, address: string) =>
   (dispatch: Dispatch) => {
     let t: Web3Type;
     if (window.ethereum) {
@@ -111,9 +111,9 @@ export const initializeWeb3 =
       return;
     }
 
-    global.signer = signer;
-    global.web3Provider = provider;
-    global.chainID = chain?.id;
+    global.publicClient = publicClient;
+    global.walletClient = walletClient;
+    global.chain = chain;
     global.address = address;
 
     dispatch(web3Initialized(t));
