@@ -1,6 +1,7 @@
 
 
-Welcome to the Grants Stack development repository!
+
+
 This repository houses the main three dApps that make up the Grants Stack ecosystem:
 
 
