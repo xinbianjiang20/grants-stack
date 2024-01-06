@@ -1,10 +1,6 @@
 
 
 
-
-This repository houses the main three dApps that make up the Grants Stack ecosystem:
-
-
 * [Builder](https://builder.gitcoin.co/)
 * [Explorer](https://explorer.gitcoin.co/#/round/424/0x4473725beb9a9d503547d2fe677f4b5aa39b68f6)
 * [Manager](https://manager.gitcoin.co/)
