@@ -17,7 +17,7 @@ jobs:
         with:
           fetch-depth: 1
 
-      - uses: pnpm/action-setup@v2
+      - uses: pnpm/action-setup@v4
         with:
           version: 8
 
@@ -29,6 +29,14 @@ jobs:
       - name: Install Dependencies
         run: |
           pnpm install
+
+      - name: Typecheck
+        run: |
+          pnpm typecheck:common
+
+      - name: Lint
+        run: |
+          pnpm lint:common
 
       - name: Test Common
         run: |

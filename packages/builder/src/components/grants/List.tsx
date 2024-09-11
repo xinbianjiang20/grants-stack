@@ -1,6 +1,8 @@
+import { useDataLayer } from "data-layer";
 import { useEffect, useState } from "react";
 import { shallowEqual, useDispatch, useSelector } from "react-redux";
 import { Link, useNavigate } from "react-router-dom";
+import { useAlloVersion } from "common/src/components/AlloVersionSwitcher";
 import { loadAllChainsProjects } from "../../actions/projects";
 import { checkRoundApplications } from "../../actions/roundApplication";
 import { loadRound } from "../../actions/rounds";
@@ -19,10 +21,13 @@ import LoadingSpinner from "../base/LoadingSpinner";
 import RoundApplyAlert from "../base/RoundApplyAlert";
 import Globe from "../icons/Globe";
 import Card from "./Card";
+import { unloadAll } from "../../actions/grantsMetadata";
 
 function ProjectsList() {
+  const dataLayer = useDataLayer();
   const dispatch = useDispatch();
   const [showErrorModal, setShowErrorModal] = useState<boolean>(true);
+  const { version: alloVersion } = useAlloVersion();
 
   const [toggleModal, setToggleModal] = useLocalStorage(
     "toggleRoundApplicationModal",
@@ -47,11 +52,12 @@ function ProjectsList() {
       const roundState = state.rounds[roundAddress];
       round = roundState ? roundState.round : undefined;
     }
+    const projectIds = Object.keys(state.grantsMetadata);
 
     const showRoundModal =
       roundToApply &&
-      state.projects.ids.length === 1 &&
-      toggleModal === ApplicationModalStatus.NotApplied &&
+      projectIds.length > 0 &&
+      toggleModal <= ApplicationModalStatus.NotApplied &&
       alreadyApplied === false;
 
     const applicationStartTime = round?.applicationsStartTime ?? 0;
@@ -65,7 +71,7 @@ function ProjectsList() {
       status: state.projects.status,
       loading: state.projects.status === Status.Loading,
       error: state.projects.status === Status.Error,
-      projectIDs: state.projects.ids,
+      projectIDs: projectIds,
       chainID: state.web3.chainID,
       existingApplication,
       showRoundModal,
@@ -77,15 +83,14 @@ function ProjectsList() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (props.status !== Status.Undefined) return;
-
-    dispatch(loadAllChainsProjects());
-  }, [dispatch, props.status]);
+    dispatch(unloadAll());
+    dispatch(loadAllChainsProjects(dataLayer, true));
+  }, []);
 
   useEffect(() => {
     if (roundToApply) {
       const [chainId, roundId] = roundToApply.split(":");
-      dispatch(loadRound(roundId, Number(chainId)));
+      dispatch(loadRound(roundId, dataLayer, Number(chainId)));
     }
   }, [roundToApply]);
 
@@ -103,7 +108,8 @@ function ProjectsList() {
           checkRoundApplications(
             Number(chainID),
             roundAddress,
-            props.projectIDs
+            props.projectIDs,
+            dataLayer
           )
         );
       }
@@ -150,16 +156,19 @@ function ProjectsList() {
         </ErrorModal>
       ) : (
         <>
-          <RoundApplyAlert
-            show={props.showRoundAlert}
-            confirmHandler={() => {
-              const { chainID, roundAddress } = parseRoundToApply(roundToApply);
-              const path = roundPath(chainID!, roundAddress!);
+          {props.round?.tags.includes(alloVersion) && (
+            <RoundApplyAlert
+              show={props.showRoundAlert}
+              confirmHandler={() => {
+                const { chainID, roundAddress } =
+                  parseRoundToApply(roundToApply);
+                const path = roundPath(chainID!, roundAddress!);
 
-              navigate(path);
-            }}
-            round={props.round}
-          />
+                navigate(path);
+              }}
+              round={props.round}
+            />
+          )}
           <div className="grow">
             {props.projectIDs.length ? (
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">

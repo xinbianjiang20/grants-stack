@@ -1,3 +1,6 @@
+import { useAllo } from "common";
+import { RoundCategory, useDataLayer } from "data-layer";
+import { RoundApplicationAnswers } from "data-layer/dist/roundApplication.types";
 import { useEffect } from "react";
 import { shallowEqual, useDispatch, useSelector } from "react-redux";
 import { useNavigate, useParams } from "react-router-dom";
@@ -7,18 +10,16 @@ import {
 } from "../../actions/roundApplication";
 import { loadRound, unloadRounds } from "../../actions/rounds";
 import { RootState } from "../../reducers";
-import Button, { ButtonVariants } from "../base/Button";
 import { Status as ApplicationStatus } from "../../reducers/roundApplication";
 import { Status as RoundStatus } from "../../reducers/rounds";
-import { grantsPath, projectPathByID } from "../../routes";
+import { grantsPath, projectPath } from "../../routes";
 import colors from "../../styles/colors";
+import { isInfinite } from "../../utils/components";
 import Form from "../application/Form";
+import Button, { ButtonVariants } from "../base/Button";
 import ErrorModal from "../base/ErrorModal";
 import LoadingSpinner from "../base/LoadingSpinner";
 import Cross from "../icons/Cross";
-import { RoundApplicationAnswers } from "../../types/roundApplication";
-import { isInfinite } from "../../utils/components";
-import { ROUND_PAYOUT_DIRECT } from "../../utils/utils";
 
 const formatDate = (unixTS: number) =>
   new Date(unixTS).toLocaleDateString(undefined);
@@ -27,6 +28,9 @@ function ViewApplication() {
   const params = useParams();
   const navigate = useNavigate();
   const dispatch = useDispatch();
+  const allo = useAllo();
+
+  const dataLayer = useDataLayer();
 
   const { chainId, roundId, ipfsHash } = params;
 
@@ -40,24 +44,18 @@ function ViewApplication() {
 
     const roundError = roundState ? roundState.error : undefined;
     const round = roundState ? roundState.round : undefined;
-
-    const applicationError = applicationState
-      ? applicationState.error
-      : undefined;
-    const showErrorModal =
-      applicationError && applicationStatus === ApplicationStatus.Error;
-
     const publishedApplicationMetadata = applicationState
       ? applicationState.metadataFromIpfs![ipfsHash!]
-      : null;
+      : undefined;
+    const showErrorModal =
+      !!publishedApplicationMetadata?.publishedApplicationData?.error;
 
     const roundApplicationStatus =
-      applicationState?.metadataFromIpfs![ipfsHash!].publishedApplicationData
-        .status;
+      publishedApplicationMetadata?.status ?? "IN_REVIEW";
 
     const web3ChainId = state.web3.chainID;
     const roundChainId = Number(chainId);
-    const fullProjectID =
+    const projectId =
       publishedApplicationMetadata?.publishedApplicationData?.application
         ?.project?.id;
 
@@ -68,21 +66,20 @@ function ViewApplication() {
       round,
       applicationState,
       applicationStatus,
-      applicationError,
       applicationMetadata: round?.applicationMetadata,
       publishedApplicationMetadata,
       showErrorModal,
       web3ChainId,
       roundChainId,
-      fullProjectID,
+      projectId,
       roundApplicationStatus,
     };
   }, shallowEqual);
 
   useEffect(() => {
-    if (roundId !== undefined) {
+    if (roundId !== undefined || !props.publishedApplicationMetadata) {
       dispatch(unloadRounds());
-      dispatch(loadRound(roundId, props.roundChainId));
+      dispatch(loadRound(roundId!, dataLayer, props.roundChainId));
     }
   }, [dispatch, roundId]);
 
@@ -90,7 +87,7 @@ function ViewApplication() {
     if (!props.round) return;
 
     if (params.ipfsHash !== undefined) {
-      dispatch(fetchApplicationData(ipfsHash!, roundId!, chainId!));
+      dispatch(fetchApplicationData(ipfsHash!, roundId!));
     }
   }, [dispatch, params.ipfsHash, props.round]);
 
@@ -119,8 +116,7 @@ function ViewApplication() {
     </div>;
   }
 
-  const isDirectRound = props.round?.payoutStrategy === ROUND_PAYOUT_DIRECT;
-
+  const isDirectRound = props.round?.payoutStrategy === RoundCategory.Direct;
   const roundInReview = props.roundApplicationStatus === "IN_REVIEW";
   const roundApproved = props.roundApplicationStatus === "APPROVED";
   const hasProperStatus = roundInReview || roundApproved;
@@ -128,7 +124,7 @@ function ViewApplication() {
   if (
     props.roundState === undefined ||
     props.round === undefined ||
-    props.publishedApplicationMetadata === null
+    props.publishedApplicationMetadata === undefined
   ) {
     return (
       <LoadingSpinner
@@ -147,12 +143,12 @@ function ViewApplication() {
         <Button
           variant={ButtonVariants.outlineDanger}
           onClick={() => {
-            const path = projectPathByID(props.fullProjectID);
+            const path = projectPath(chainId as string, "0x", props.projectId!);
             if (path !== undefined) {
               navigate(path);
             } else {
               console.error(
-                `cannot build project path from id: ${props.fullProjectID}`
+                `cannot build project path from id: ${props.projectId}`
               );
             }
           }}
@@ -167,7 +163,7 @@ function ViewApplication() {
       <div className="w-full flex">
         <div className="w-full md:w-1/3 mb-2 hidden sm:inline-block">
           <p className="font-semibold">Grant Round</p>
-          <p>{props.round.programName}</p>
+          <p>{props.round.programName ?? ""}</p>
           <p>{props.round.roundMetadata.name}</p>
           {isDirectRound && hasProperStatus && (
             <>
@@ -192,7 +188,8 @@ function ViewApplication() {
               <p className="font-semibold mt-4">Application Period:</p>
               <p>
                 {formatDate(props.round.applicationsStartTime * 1000)} -{" "}
-                {isInfinite(props.round.applicationsEndTime)
+                {isInfinite(props.round.applicationsEndTime) ||
+                !props.round.applicationsEndTime
                   ? "No End Date"
                   : formatDate(props.round.applicationsEndTime * 1000)}
               </p>
@@ -201,7 +198,8 @@ function ViewApplication() {
           <p className="font-semibold mt-4">Round Dates:</p>
           <p>
             {formatDate(props.round.roundStartTime * 1000)} -{" "}
-            {isInfinite(props.round.applicationsEndTime)
+            {isInfinite(props.round.applicationsEndTime) ||
+            !props.round.applicationsEndTime
               ? "No End Date"
               : formatDate(props.round.roundEndTime * 1000)}
           </p>
@@ -226,7 +224,7 @@ function ViewApplication() {
               showText
             />
           )}
-          {props.applicationMetadata && props.publishedApplicationMetadata && (
+          {props.applicationMetadata && (
             <Form
               roundApplication={props.applicationMetadata}
               publishedApplication={
@@ -234,10 +232,25 @@ function ViewApplication() {
               }
               showErrorModal={props.showErrorModal || false}
               round={props.round}
-              onSubmit={(answers: RoundApplicationAnswers) => {
-                dispatch(submitApplication(props.round!.address, answers));
+              onSubmit={(
+                answers: RoundApplicationAnswers,
+                createLinkedProject: boolean
+              ) => {
+                if (allo === null) {
+                  return;
+                }
+                dispatch(
+                  submitApplication(
+                    props.round!.id,
+                    answers,
+                    allo,
+                    createLinkedProject,
+                    dataLayer
+                  )
+                );
               }}
               readOnly
+              setCreateLinkedProject={() => {}}
             />
           )}
         </div>

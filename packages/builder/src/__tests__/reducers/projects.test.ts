@@ -1,13 +1,18 @@
 import "@testing-library/jest-dom";
 import {
-  AppStatus,
-  projectsReducer,
+  ApplicationStatus,
+  ProjectApplicationMetadata,
+  RoundVisibilityType,
+} from "data-layer";
+import {
   ProjectsState,
   Status,
   initialState as initialProjectsState,
+  projectsReducer,
 } from "../../reducers/projects";
 import { addressFrom } from "../../utils/test_utils";
 
+// Note: these tests are only testing QuadraticFunding RoundCategory type
 describe("projects reducer", () => {
   let state: ProjectsState;
 
@@ -16,23 +21,81 @@ describe("projects reducer", () => {
   });
 
   it("PROJECT_APPLICATIONS_LOADING updates state", async () => {
-    const initialState = {
+    const initialState: ProjectsState = {
       ...state,
       applications: {
         "1": [
           {
-            roundID: addressFrom(1),
-            status: "PENDING" as AppStatus,
-            inReview: false,
+            id: "1",
+            projectId: "1",
             chainId: 1,
+            roundId: addressFrom(1),
+            status: "PENDING" as ApplicationStatus,
+            metadataCid: "0x1",
+            metadata: {} as ProjectApplicationMetadata,
+            distributionTransaction: null,
+            anchorAddress: addressFrom(123) as `0x${string}`,
+            round: {
+              applicationsStartTime: "0",
+              applicationsEndTime: "0",
+              donationsStartTime: "0",
+              donationsEndTime: "0",
+              roundMetadata: {
+                name: "Round 1",
+                roundType: "public" as RoundVisibilityType,
+                eligibility: {
+                  description: "Eligibility description",
+                  requirements: [{ requirement: "Requirement 1" }],
+                },
+                programContractAddress: "0x1",
+                support: {
+                  info: "https://support.com",
+                  type: "WEBSITE",
+                },
+              },
+              name: "Round 1",
+              strategyName: "allov1.QF",
+            },
+            totalDonationsCount: 0,
+            totalAmountDonatedInUsd: 0,
+            uniqueDonorsCount: 0,
           },
         ],
         "2": [
           {
-            roundID: addressFrom(2),
-            status: "PENDING" as AppStatus,
-            inReview: false,
+            id: "1",
+            projectId: "1",
             chainId: 1,
+            roundId: addressFrom(2),
+            status: "PENDING" as ApplicationStatus,
+            metadataCid: "0x1",
+            metadata: {} as ProjectApplicationMetadata,
+            distributionTransaction: null,
+            anchorAddress: addressFrom(123) as `0x${string}`,
+            round: {
+              applicationsStartTime: "0",
+              applicationsEndTime: "0",
+              donationsStartTime: "0",
+              donationsEndTime: "0",
+              roundMetadata: {
+                name: "Round 2",
+                roundType: "public" as RoundVisibilityType,
+                eligibility: {
+                  description: "Eligibility description",
+                  requirements: [{ requirement: "Requirement 1" }],
+                },
+                programContractAddress: "0x1",
+                support: {
+                  info: "https://support.com",
+                  type: "WEBSITE",
+                },
+              },
+              name: "Round 2",
+              strategyName: "allov1.QF",
+            },
+            totalDonationsCount: 0,
+            totalAmountDonatedInUsd: 0,
+            uniqueDonorsCount: 0,
           },
         ],
       },
@@ -46,25 +109,83 @@ describe("projects reducer", () => {
     expect(newState.applications).toEqual({
       "1": [
         {
-          roundID: addressFrom(1),
-          status: "PENDING",
-          inReview: false,
+          roundId: addressFrom(1),
+          status: "PENDING" as ApplicationStatus,
           chainId: 1,
+          id: "1",
+          projectId: "1",
+          metadataCid: "0x1",
+          metadata: {},
+          distributionTransaction: null,
+          anchorAddress: addressFrom(123) as `0x${string}`,
+          round: {
+            applicationsStartTime: "0",
+            applicationsEndTime: "0",
+            donationsStartTime: "0",
+            donationsEndTime: "0",
+            roundMetadata: {
+              name: "Round 1",
+              roundType: "public" as RoundVisibilityType,
+              eligibility: {
+                description: "Eligibility description",
+                requirements: [{ requirement: "Requirement 1" }],
+              },
+              programContractAddress: "0x1",
+              support: {
+                info: "https://support.com",
+                type: "WEBSITE",
+              },
+            },
+            name: "Round 1",
+            strategyName: "allov1.QF",
+          },
+          totalDonationsCount: 0,
+          totalAmountDonatedInUsd: 0,
+          uniqueDonorsCount: 0,
         },
       ],
     });
   });
 
   it("PROJECT_APPLICATIONS_LOADED updates state", async () => {
-    const initialState = {
+    const initialState: ProjectsState = {
       ...state,
       applications: {
         "1": [
           {
-            roundID: addressFrom(1),
-            status: "PENDING" as AppStatus,
-            inReview: false,
+            roundId: addressFrom(1),
+            status: "PENDING" as ApplicationStatus,
             chainId: 1,
+            id: "1",
+            projectId: "1",
+            metadataCid: "0x1",
+            metadata: {} as ProjectApplicationMetadata,
+            distributionTransaction: null,
+            anchorAddress: addressFrom(123) as `0x${string}`,
+            round: {
+              applicationsStartTime: "0",
+              applicationsEndTime: "0",
+              donationsStartTime: "0",
+              donationsEndTime: "0",
+              roundMetadata: {
+                name: "Round 1",
+                roundType: "public" as RoundVisibilityType,
+                eligibility: {
+                  description: "Eligibility description",
+                  requirements: [{ requirement: "Requirement 1" }],
+                },
+                programContractAddress: "0x1",
+                support: {
+                  info: "https://support.com",
+                  type: "WEBSITE",
+                },
+              },
+              name: "Round 1",
+              strategyName: "allov1.QF",
+            },
+            totalDonationsCount: 0,
+            totalAmountDonatedInUsd: 0,
+            uniqueDonorsCount: 0,
           },
         ],
       },
@@ -75,10 +196,39 @@ describe("projects reducer", () => {
       projectID: "2",
       applications: [
         {
-          roundID: addressFrom(2),
-          status: "APPROVED",
-          inReview: false,
+          roundId: addressFrom(2),
+          status: "APPROVED" as ApplicationStatus,
           chainId: 1,
+          id: "2",
+          projectId: "2",
+          metadataCid: "0x2",
+          metadata: {} as ProjectApplicationMetadata,
+          distributionTransaction: null,
+          anchorAddress: addressFrom(123) as `0x${string}`,
+          round: {
+            applicationsStartTime: "0",
+            applicationsEndTime: "0",
+            donationsStartTime: "0",
+            donationsEndTime: "0",
+            roundMetadata: {
+              name: "Round 2",
+              roundType: "public" as RoundVisibilityType,
+              eligibility: {
+                description: "Eligibility description",
+                requirements: [{ requirement: "Requirement 1" }],
+              },
+              programContractAddress: "0x1",
+              support: {
+                info: "https://support.com",
+                type: "WEBSITE",
+              },
+            },
+            name: "Round 2",
+            strategyName: "allov1.QF",
+          },
+          totalDonationsCount: 0,
+          totalAmountDonatedInUsd: 0,
+          uniqueDonorsCount: 0,
         },
       ],
     });
@@ -86,18 +236,76 @@ describe("projects reducer", () => {
     expect(newState.applications).toEqual({
       "1": [
         {
-          roundID: addressFrom(1),
-          status: "PENDING",
-          inReview: false,
+          roundId: addressFrom(1),
+          projectId: "1",
+          status: "PENDING" as ApplicationStatus,
           chainId: 1,
+          id: "1",
+          metadataCid: "0x1",
+          metadata: {} as ProjectApplicationMetadata,
+          distributionTransaction: null,
+          anchorAddress: addressFrom(123) as `0x${string}`,
+          round: {
+            applicationsStartTime: "0",
+            applicationsEndTime: "0",
+            donationsStartTime: "0",
+            donationsEndTime: "0",
+            roundMetadata: {
+              name: "Round 1",
+              roundType: "public" as RoundVisibilityType,
+              eligibility: {
+                description: "Eligibility description",
+                requirements: [{ requirement: "Requirement 1" }],
+              },
+              programContractAddress: "0x1",
+              support: {
+                info: "https://support.com",
+                type: "WEBSITE",
+              },
+            },
+            name: "Round 1",
+            strategyName: "allov1.QF",
+          },
+          totalDonationsCount: 0,
+          totalAmountDonatedInUsd: 0,
+          uniqueDonorsCount: 0,
         },
       ],
       "2": [
         {
-          roundID: addressFrom(2),
-          status: "APPROVED",
-          inReview: false,
+          roundId: addressFrom(2),
+          projectId: "2",
+          status: "APPROVED" as ApplicationStatus,
           chainId: 1,
+          id: "2",
+          metadataCid: "0x2",
+          metadata: {} as ProjectApplicationMetadata,
+          distributionTransaction: null,
+          anchorAddress: addressFrom(123) as `0x${string}`,
+          round: {
+            applicationsStartTime: "0",
+            applicationsEndTime: "0",
+            donationsStartTime: "0",
+            donationsEndTime: "0",
+            roundMetadata: {
+              name: "Round 2",
+              roundType: "public" as RoundVisibilityType,
+              eligibility: {
+                description: "Eligibility description",
+                requirements: [{ requirement: "Requirement 1" }],
+              },
+              programContractAddress: "0x1",
+              support: {
+                info: "https://support.com",
+                type: "WEBSITE",
+              },
+            },
+            name: "Round 2",
+            strategyName: "allov1.QF",
+          },
+          totalDonationsCount: 0,
+          totalAmountDonatedInUsd: 0,
+          uniqueDonorsCount: 0,
         },
       ],
     });
@@ -114,49 +322,223 @@ describe("projects reducer", () => {
   });
 
   it("PROJECT_APPLICATION_UPDATED updates a project application status", async () => {
-    const initialState = {
+    const initialState: ProjectsState = {
       ...state,
       applications: {
         "1": [
           {
-            roundID: "0x1",
-            status: "PENDING" as AppStatus,
-            inReview: false,
+            roundId: "0x1",
+            status: "PENDING" as ApplicationStatus,
             chainId: 1,
+            id: "1",
+            projectId: "1",
+            metadataCid: "0x1",
+            metadata: {} as ProjectApplicationMetadata,
+            distributionTransaction: null,
+            anchorAddress: addressFrom(123) as `0x${string}`,
+            round: {
+              applicationsStartTime: "0",
+              applicationsEndTime: "0",
+              donationsStartTime: "0",
+              donationsEndTime: "0",
+              roundMetadata: {
+                name: "Round 1",
+                roundType: "public" as RoundVisibilityType,
+                eligibility: {
+                  description: "Eligibility description",
+                  requirements: [{ requirement: "Requirement 1" }],
+                },
+                programContractAddress: "0x1",
+                support: {
+                  info: "https://support.com",
+                  type: "WEBSITE",
+                },
+              },
+              name: "Round 1",
+              strategyName: "allov1.QF",
+            },
+            totalDonationsCount: 0,
+            totalAmountDonatedInUsd: 0,
+            uniqueDonorsCount: 0,
           },
         ],
         "2": [
           {
-            roundID: "0x1",
-            status: "PENDING" as AppStatus,
-            inReview: false,
+            roundId: "0x1",
+            status: "PENDING" as ApplicationStatus,
             chainId: 1,
+            id: "1",
+            projectId: "1",
+            metadataCid: "0x1",
+            metadata: {} as ProjectApplicationMetadata,
+            distributionTransaction: null,
+            anchorAddress: addressFrom(123) as `0x${string}`,
+            round: {
+              applicationsStartTime: "0",
+              applicationsEndTime: "0",
+              donationsStartTime: "0",
+              donationsEndTime: "0",
+              roundMetadata: {
+                name: "Round 1",
+                roundType: "public" as RoundVisibilityType,
+                eligibility: {
+                  description: "Eligibility description",
+                  requirements: [{ requirement: "Requirement 1" }],
+                },
+                programContractAddress: "0x1",
+                support: {
+                  info: "https://support.com",
+                  type: "WEBSITE",
+                },
+              },
+              name: "Round 1",
+              strategyName: "allov1.QF",
+            },
+            totalDonationsCount: 0,
+            totalAmountDonatedInUsd: 0,
+            uniqueDonorsCount: 0,
           },
           {
-            roundID: "0x2",
-            status: "PENDING" as AppStatus,
-            inReview: false,
+            roundId: "0x2",
+            status: "PENDING" as ApplicationStatus,
             chainId: 1,
+            id: "2",
+            projectId: "2",
+            metadataCid: "0x2",
+            metadata: {} as ProjectApplicationMetadata,
+            distributionTransaction: null,
+            anchorAddress: addressFrom(123) as `0x${string}`,
+            round: {
+              applicationsStartTime: "0",
+              applicationsEndTime: "0",
+              donationsStartTime: "0",
+              donationsEndTime: "0",
+              roundMetadata: {
+                name: "Round 2",
+                roundType: "public" as RoundVisibilityType,
+                eligibility: {
+                  description: "Eligibility description",
+                  requirements: [{ requirement: "Requirement 1" }],
+                },
+                programContractAddress: "0x1",
+                support: {
+                  info: "https://support.com",
+                  type: "WEBSITE",
+                },
+              },
+              name: "Round 2",
+              strategyName: "allov1.QF",
+            },
+            totalDonationsCount: 0,
+            totalAmountDonatedInUsd: 0,
+            uniqueDonorsCount: 0,
           },
           {
-            roundID: "0x3",
-            status: "PENDING" as AppStatus,
-            inReview: false,
+            roundId: "0x3",
+            status: "PENDING" as ApplicationStatus,
             chainId: 1,
+            id: "3",
+            projectId: "3",
+            metadataCid: "0x3",
+            metadata: {} as ProjectApplicationMetadata,
+            distributionTransaction: null,
+            anchorAddress: addressFrom(123) as `0x${string}`,
+            round: {
+              applicationsStartTime: "0",
+              applicationsEndTime: "0",
+              donationsStartTime: "0",
+              donationsEndTime: "0",
+              roundMetadata: {
+                name: "Round 3",
+                roundType: "public" as RoundVisibilityType,
+                eligibility: {
+                  description: "Eligibility description",
+                  requirements: [{ requirement: "Requirement 1" }],
+                },
+                programContractAddress: "0x1",
+                support: {
+                  info: "https://support.com",
+                  type: "WEBSITE",
+                },
+              },
+              name: "Round 3",
+              strategyName: "allov1.QF",
+            },
+            totalDonationsCount: 0,
+            totalAmountDonatedInUsd: 0,
+            uniqueDonorsCount: 0,
           },
           {
-            roundID: "0x4",
-            status: "PENDING" as AppStatus,
-            inReview: false,
+            roundId: "0x4",
+            status: "PENDING" as ApplicationStatus,
             chainId: 1,
+            id: "4",
+            projectId: "4",
+            metadataCid: "0x4",
+            metadata: {} as ProjectApplicationMetadata,
+            distributionTransaction: null,
+            anchorAddress: addressFrom(123) as `0x${string}`,
+            round: {
+              applicationsStartTime: "0",
+              applicationsEndTime: "0",
+              donationsStartTime: "0",
+              donationsEndTime: "0",
+              roundMetadata: {
+                name: "Round 4",
+                roundType: "public" as RoundVisibilityType,
+                eligibility: {
+                  description: "Eligibility description",
+                  requirements: [{ requirement: "Requirement 1" }],
+                },
+                programContractAddress: "0x1",
+                support: {
+                  info: "https://support.com",
+                  type: "WEBSITE",
+                },
+              },
+              name: "Round 4",
+              strategyName: "allov1.QF",
+            },
+            totalDonationsCount: 0,
+            totalAmountDonatedInUsd: 0,
+            uniqueDonorsCount: 0,
           },
         ],
         "3": [
           {
-            roundID: "0x3",
-            status: "PENDING" as AppStatus,
-            inReview: false,
+            roundId: "0x3",
+            status: "PENDING" as ApplicationStatus,
             chainId: 1,
+            id: "1",
+            projectId: "1",
+            metadataCid: "0x1",
+            metadata: {} as ProjectApplicationMetadata,
+            distributionTransaction: null,
+            anchorAddress: addressFrom(123) as `0x${string}`,
+            round: {
+              applicationsStartTime: "0",
+              applicationsEndTime: "0",
+              donationsStartTime: "0",
+              donationsEndTime: "0",
+              roundMetadata: {
+                name: "Round 3",
+                roundType: "public" as RoundVisibilityType,
+                eligibility: {
+                  description: "Eligibility description",
+                  requirements: [{ requirement: "Requirement 1" }],
+                },
+                programContractAddress: "0x1",
+                support: {
+                  info: "https://support.com",
+                  type: "WEBSITE",
+                },
+              },
+              name: "Round 3",
+              strategyName: "allov1.QF",
+            },
+            totalDonationsCount: 0,
+            totalAmountDonatedInUsd: 0,
+            uniqueDonorsCount: 0,
           },
         ],
       },
@@ -169,93 +551,60 @@ describe("projects reducer", () => {
       status: "APPROVED",
     });
 
-    expect(newState.applications).toEqual({
-      "1": [
-        {
-          roundID: "0x1",
-          status: "PENDING" as AppStatus,
-          inReview: false,
-          chainId: 1,
+    expect(newState.applications!["2"][2]).toEqual({
+      roundId: "0x3",
+      projectId: "3",
+      status: "APPROVED" as ApplicationStatus,
+      chainId: 1,
+      id: "3",
+      metadataCid: "0x3",
+      metadata: {},
+      distributionTransaction: null,
+      anchorAddress: addressFrom(123) as `0x${string}`,
+      round: {
+        applicationsStartTime: "0",
+        applicationsEndTime: "0",
+        donationsStartTime: "0",
+        donationsEndTime: "0",
+        roundMetadata: {
+          name: "Round 3",
+          roundType: "public" as RoundVisibilityType,
+          eligibility: {
+            description: "Eligibility description",
+            requirements: [{ requirement: "Requirement 1" }],
+          },
+          programContractAddress: "0x1",
+          support: {
+            info: "https://support.com",
+            type: "WEBSITE",
+          },
         },
-      ],
-      "2": [
-        {
-          roundID: "0x1",
-          status: "PENDING" as AppStatus,
-          inReview: false,
-          chainId: 1,
-        },
-        {
-          roundID: "0x2",
-          status: "PENDING" as AppStatus,
-          inReview: false,
-          chainId: 1,
-        },
-        {
-          roundID: "0x3",
-          status: "APPROVED" as AppStatus,
-          inReview: false,
-          chainId: 1,
-        },
-        {
-          roundID: "0x4",
-          status: "PENDING" as AppStatus,
-          inReview: false,
-          chainId: 1,
-        },
-      ],
-      "3": [
-        {
-          roundID: "0x3",
-          status: "PENDING" as AppStatus,
-          inReview: false,
-          chainId: 1,
-        },
-      ],
+        name: "Round 3",
+        strategyName: "allov1.QF",
+      },
+      totalDonationsCount: 0,
+      totalAmountDonatedInUsd: 0,
+      uniqueDonorsCount: 0,
     });
   });
 
   it("handles multiple chain loading states", async () => {
-    // start loading chain 0
     const state1: ProjectsState = projectsReducer(state, {
       type: "PROJECTS_LOADING",
-      payload: 0,
+      payload: [10, 1],
     });
 
     expect(state1.status).toEqual(Status.Loading);
-    expect(state1.loadingChains.length).toEqual(1);
+    expect(state1.loadingChains.length).toEqual(2);
 
-    // start loading chain 1
     const state2: ProjectsState = projectsReducer(state1, {
-      type: "PROJECTS_LOADING",
-      payload: 1,
-    });
-
-    expect(state2.status).toEqual(Status.Loading);
-    expect(state2.loadingChains.length).toEqual(2);
-
-    // mark chain 1 as done
-    const state3: ProjectsState = projectsReducer(state2, {
       type: "PROJECTS_LOADED",
       payload: {
-        chainID: 1,
-        events: {},
+        chainIDs: [10, 1],
       },
     });
 
-    expect(state3.status).toEqual(Status.Loading);
-    expect(state3.loadingChains.length).toEqual(1);
-
-    // mark chain 0 as done
-    const state4: ProjectsState = projectsReducer(state3, {
-      type: "PROJECTS_LOADED",
-      payload: {
-        chainID: 0,
-        events: {},
-      },
-    });
-
-    expect(state4.status).toEqual(Status.Loaded);
-    expect(state4.loadingChains.length).toEqual(0);
+    expect(state2.status).toEqual(Status.Loaded);
+    expect(state2.loadingChains.length).toEqual(0);
   });
 });

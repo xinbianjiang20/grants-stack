@@ -1,4 +1,4 @@
-import { Project } from "../api/types";
+import { Project } from "data-layer";
 import tw from "tailwind-styled-components";
 
 export default function NavbarCart(props: { cart: Project[] }) {
@@ -26,8 +26,8 @@ function QuickViewIcon(props: { count: number }) {
       items-center
       h-4
       text-xs
-      text-white
-      bg-violet-400
+      text-black
+      bg-blue-100
       rounded-full
       -top-1.5
       ${() => (props.count >= 100 ? "-right-2.5" : "-right-1.5")}
@@ -56,7 +56,7 @@ function QuickViewIcon(props: { count: number }) {
         <Badge
           style={{
             fontSize: "0.5rem",
-            paddingLeft: 1,
+            paddingBottom: 1,
           }}
         >
           {props.count}

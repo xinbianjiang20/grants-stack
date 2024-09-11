@@ -6,12 +6,21 @@ import {
   LockOpenIcon,
 } from "@heroicons/react/outline";
 import { PencilIcon, PlusSmIcon, XIcon } from "@heroicons/react/solid";
+import { isLitUnavailable, useAllo } from "common";
 import { Button } from "common/src/styles";
+import { RoundCategory } from "data-layer";
+import _ from "lodash";
 import { useContext, useEffect, useState } from "react";
-import { SubmitHandler, useFieldArray, useForm } from "react-hook-form";
+import {
+  DeepRequired,
+  SubmitHandler,
+  useFieldArray,
+  useForm,
+} from "react-hook-form";
 import { NavigateFunction, useLocation, useNavigate } from "react-router-dom";
+import { getAddress } from "viem";
 import { errorModalDelayMs } from "../../constants";
-import { useCreateRound } from "../../context/round/CreateRoundContext";
+import { useCreateRoundStore } from "../../stores/createRoundStore";
 import {
   ApplicationMetadata,
   EditQuestion,
@@ -19,11 +28,10 @@ import {
   ProgressStatus,
   ProjectRequirements,
   Round,
-  RoundCategory,
 } from "../api/types";
 import {
-  generateApplicationSchema,
   SchemaQuestion,
+  generateApplicationSchema,
   typeToText,
 } from "../api/utils";
 import AddQuestionModal from "../common/AddQuestionModal";
@@ -34,9 +42,11 @@ import { FormContext } from "../common/FormWizard";
 import { InputIcon } from "../common/InputIcon";
 import PreviewQuestionModal from "../common/PreviewQuestionModal";
 import ProgressModal from "../common/ProgressModal";
-import _ from "lodash";
+import { JsonRpcSigner } from "@ethersproject/providers";
+import { useAccount } from "wagmi";
+import { getEthersSigner } from "../../app/wagmi";
 
-export const initialQuestionsQF: SchemaQuestion[] = [
+export const getInitialQuestionsQF = (chainId: number): SchemaQuestion[] => [
   {
     id: 0,
     title: "Payout Wallet Address",
@@ -51,7 +61,7 @@ export const initialQuestionsQF: SchemaQuestion[] = [
     id: 1,
     title: "Email Address",
     required: true,
-    encrypted: true,
+    encrypted: !isLitUnavailable(chainId),
     hidden: true,
     type: "email",
   },
@@ -73,12 +83,12 @@ export const initialQuestionsQF: SchemaQuestion[] = [
   },
 ];
 
-export const initialQuestionsDirect: SchemaQuestion[] = [
+export const getInitialQuestionsDirect = (chainId: number) => [
   {
     id: 1,
     title: "Email Address",
     required: true,
-    encrypted: true,
+    encrypted: !isLitUnavailable(chainId),
     hidden: true,
     type: "email",
     fixed: true,
@@ -94,25 +104,6 @@ export const initialQuestionsDirect: SchemaQuestion[] = [
   },
   {
     id: 3,
-    title: "Amount requested",
-    required: true,
-    encrypted: false,
-    hidden: true,
-    type: "number",
-    fixed: false,
-  },
-  {
-    id: 4,
-    title: "Payout token",
-    required: true,
-    encrypted: false,
-    hidden: true,
-    type: "dropdown",
-    choices: ["DAI"], // ETH is not supported.
-    fixed: false,
-  },
-  {
-    id: 5,
     title: "Payout wallet address",
     required: true,
     encrypted: false,
@@ -122,7 +113,7 @@ export const initialQuestionsDirect: SchemaQuestion[] = [
     metadataExcluded: true,
   },
   {
-    id: 6,
+    id: 4,
     title: "Milestones",
     required: true,
     encrypted: false,
@@ -130,7 +121,7 @@ export const initialQuestionsDirect: SchemaQuestion[] = [
     type: "paragraph",
   },
   {
-    id: 7,
+    id: 5,
     title: "Funding Sources",
     required: true,
     encrypted: false,
@@ -138,7 +129,7 @@ export const initialQuestionsDirect: SchemaQuestion[] = [
     type: "short-answer",
   },
   {
-    id: 8,
+    id: 6,
     title: "Team Size",
     required: true,
     encrypted: false,
@@ -173,10 +164,20 @@ export function RoundApplicationForm(props: {
   stepper: typeof FS;
   configuration?: { roundCategory?: RoundCategory };
 }) {
+  const [signer, setSigner] = useState<JsonRpcSigner>();
   const [openProgressModal, setOpenProgressModal] = useState(false);
   const [openPreviewModal, setOpenPreviewModal] = useState(false);
   const [openAddQuestionModal, setOpenAddQuestionModal] = useState(false);
   const [toEdit, setToEdit] = useState<EditQuestion | undefined>();
+  const { chainId, isConnected, connector } = useAccount();
+
+  useEffect(() => {
+    const init = async () => {
+      const s = await getEthersSigner(connector!, chainId!);
+      setSigner(s);
+    };
+    if (isConnected && chainId && connector?.getAccounts) init();
+  }, [chainId, isConnected, connector]);
 
   const { currentStep, setCurrentStep, stepsCount, formData } =
     useContext(FormContext);
@@ -197,11 +198,10 @@ export function RoundApplicationForm(props: {
   const defaultQuestions: ApplicationMetadata["questions"] = questionsArg
     ? questionsArg
     : roundCategory === RoundCategory.QuadraticFunding
-    ? initialQuestionsQF
-    : initialQuestionsDirect;
+    ? getInitialQuestionsQF(chainId!)
+    : getInitialQuestionsDirect(chainId!);
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { control, handleSubmit, register, getValues } = useForm<Round>({
+  const { control, handleSubmit } = useForm<Round>({
     defaultValues: {
       ...formData,
       applicationMetadata: {
@@ -215,77 +215,78 @@ export function RoundApplicationForm(props: {
     control,
   });
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [projectRequirements, setProjectRequirements] =
     useState<ProjectRequirements>({ ...initialRequirements });
 
   const {
     createRound,
-    IPFSCurrentStatus,
-    votingContractDeploymentStatus,
-    payoutContractDeploymentStatus,
-    roundContractDeploymentStatus,
+    clearStatuses,
+    ipfsStatus,
+    contractDeploymentStatus,
     indexingStatus,
-  } = useCreateRound();
+    error: createRoundError,
+  } = useCreateRoundStore();
 
+  /** Upon succesful creation of round, redirect to program details */
   useEffect(() => {
     const isSuccess =
-      IPFSCurrentStatus === ProgressStatus.IS_SUCCESS &&
-      votingContractDeploymentStatus === ProgressStatus.IS_SUCCESS &&
-      payoutContractDeploymentStatus === ProgressStatus.IS_SUCCESS &&
-      roundContractDeploymentStatus === ProgressStatus.IS_SUCCESS &&
+      ipfsStatus === ProgressStatus.IS_SUCCESS &&
+      contractDeploymentStatus === ProgressStatus.IS_SUCCESS &&
       indexingStatus === ProgressStatus.IS_SUCCESS;
 
     if (isSuccess) {
       redirectToProgramDetails(navigate, 2000, programId);
+      /* Clear the store progress statuses in order to not redirect when creating another round */
+      /*The delay is to prevent clearing the statuses before the user is redirected */
+      setTimeout(() => {
+        clearStatuses();
+      }, 3_000);
     }
   }, [
-    IPFSCurrentStatus,
-    votingContractDeploymentStatus,
-    payoutContractDeploymentStatus,
-    roundContractDeploymentStatus,
+    contractDeploymentStatus,
+    ipfsStatus,
     indexingStatus,
     programId,
     navigate,
     roundCategory,
+    clearStatuses,
   ]);
 
+  /** If there's an error, show an error dialog and redirect back to program */
   useEffect(() => {
     if (
-      IPFSCurrentStatus === ProgressStatus.IS_ERROR ||
-      votingContractDeploymentStatus === ProgressStatus.IS_ERROR ||
-      payoutContractDeploymentStatus === ProgressStatus.IS_ERROR ||
-      roundContractDeploymentStatus === ProgressStatus.IS_ERROR
+      ipfsStatus === ProgressStatus.IS_ERROR ||
+      contractDeploymentStatus === ProgressStatus.IS_ERROR
     ) {
       setTimeout(() => {
         setOpenErrorModal(true);
       }, errorModalDelayMs);
     }
-
-    if (indexingStatus === ProgressStatus.IS_ERROR) {
-      redirectToProgramDetails(navigate, 5000, programId);
-    }
   }, [
-    IPFSCurrentStatus,
-    votingContractDeploymentStatus,
-    payoutContractDeploymentStatus,
-    roundContractDeploymentStatus,
+    contractDeploymentStatus,
     indexingStatus,
+    ipfsStatus,
     navigate,
     programId,
   ]);
 
   const prev = () => setCurrentStep(currentStep - 1);
 
+  const allo = useAllo();
+
   const next: SubmitHandler<Round> = async (values) => {
     try {
-      setOpenProgressModal(true);
-      const data: Partial<Round> = _.merge(formData, values);
+      if (allo === null) {
+        throw "wallet not connected";
+      }
 
-      const roundMetadataWithProgramContractAddress: Round["roundMetadata"] = {
+      setOpenProgressModal(true);
+      const data = _.merge(formData, values);
+
+      const roundMetadataWithProgramContractAddress = {
         ...(data.roundMetadata as Round["roundMetadata"]),
         programContractAddress: programId,
-      };
+      } as DeepRequired<Round["roundMetadata"]>;
 
       const applicationQuestions = {
         lastUpdatedOn: Date.now(),
@@ -300,13 +301,25 @@ export function RoundApplicationForm(props: {
         ...data,
         ownedBy: programId,
         operatorWallets: props.initialData.program.operatorWallets,
-      } as Round;
+      } as DeepRequired<Round>;
 
-      await createRound({
-        roundMetadataWithProgramContractAddress,
-        applicationQuestions,
-        round,
-        roundCategory,
+      await createRound(allo, {
+        roundData: {
+          roundCategory: roundCategory,
+          roundMetadataWithProgramContractAddress,
+          applicationQuestions,
+          roundStartTime: round.roundStartTime,
+          roundEndTime: round.roundEndTime,
+          applicationsStartTime: round.applicationsStartTime,
+          applicationsEndTime: round.applicationsEndTime,
+          token: round.token,
+          matchingFundsAvailable:
+            round.roundMetadata.quadraticFundingConfig
+              ?.matchingFundsAvailable ?? 0,
+          roundOperators: round.operatorWallets.map(getAddress),
+        },
+        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+        walletSigner: signer!,
       });
     } catch (error) {
       datadogLogs.logger.error(
@@ -320,26 +333,16 @@ export function RoundApplicationForm(props: {
     {
       name: "Storing",
       description: "The metadata is being saved in a safe place.",
-      status: IPFSCurrentStatus,
-    },
-    {
-      name: "Deploying",
-      description: "The voting contract is being deployed.",
-      status: votingContractDeploymentStatus,
-    },
-    {
-      name: "Deploying",
-      description: "The payout contract is being deployed.",
-      status: payoutContractDeploymentStatus,
+      status: ipfsStatus,
     },
     {
       name: "Deploying",
       description: "The round contract is being deployed.",
-      status: roundContractDeploymentStatus,
+      status: contractDeploymentStatus,
     },
     {
       name: "Indexing",
-      description: "The subgraph is indexing the data.",
+      description: "The data is being indexed.",
       status: indexingStatus,
     },
     {
@@ -353,10 +356,8 @@ export function RoundApplicationForm(props: {
   ];
 
   const disableNext: boolean =
-    IPFSCurrentStatus === ProgressStatus.IN_PROGRESS ||
-    votingContractDeploymentStatus === ProgressStatus.IN_PROGRESS ||
-    payoutContractDeploymentStatus === ProgressStatus.IN_PROGRESS ||
-    roundContractDeploymentStatus === ProgressStatus.IN_PROGRESS ||
+    ipfsStatus === ProgressStatus.IN_PROGRESS ||
+    contractDeploymentStatus === ProgressStatus.IN_PROGRESS ||
     indexingStatus === ProgressStatus.IN_PROGRESS ||
     indexingStatus === ProgressStatus.IS_SUCCESS ||
     !props.initialData.program;
@@ -365,7 +366,7 @@ export function RoundApplicationForm(props: {
     data: [
       keyof ProjectRequirements,
       keyof ProjectRequirements[keyof ProjectRequirements],
-      boolean
+      boolean,
     ][]
   ) => {
     let tmpRequirements = { ...projectRequirements };
@@ -391,6 +392,7 @@ export function RoundApplicationForm(props: {
     >
       <ErrorModal
         isOpen={openErrorModal}
+        subheading={createRoundError?.toString()}
         setIsOpen={setOpenErrorModal}
         tryAgainFn={handleSubmit(next)}
         doneFn={() => {
@@ -576,7 +578,7 @@ const ProjectSocials = ({
     data: [
       keyof ProjectRequirements,
       keyof ProjectRequirements[keyof ProjectRequirements],
-      boolean
+      boolean,
     ][]
   ) => void;
   requirements: ProjectRequirements;

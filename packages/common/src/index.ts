@@ -1,11 +1,26 @@
-import useSWR from "swr";
-import { useMemo, useState } from "react";
-import { ChainId } from "./chain-ids";
+import { Signer } from "@ethersproject/abstract-signer";
+import { Network, Web3Provider } from "@ethersproject/providers";
+import { useEffect, useState } from "react";
+import { useParams as useRouterParams } from "react-router";
 import z from "zod";
+import { Round } from "data-layer";
+import { getAlloVersion, getConfig } from "./config";
+import moment from "moment-timezone";
+import { getChainById } from "@gitcoin/gitcoin-chain-data";
+
 export * from "./icons";
 export * from "./markdown";
+export * from "./allo/common";
+export * from "./allo/application";
+export * from "./payoutTokens";
 
-export { ChainId };
+export * from "./services/passport/passportCredentials";
+export { PassportVerifierWithExpiration } from "./services/passport/credentialVerifier";
+export * from "@gitcoin/gitcoin-chain-data";
+
+export function useParams<T extends Record<string, string> = never>() {
+  return useRouterParams<T>() as T;
+}
 
 export enum PassportState {
   NOT_CONNECTED,
@@ -19,7 +34,7 @@ export enum PassportState {
 const PassportEvidenceSchema = z.object({
   type: z.string().nullish(),
   rawScore: z.coerce.number(),
-  threshold: z.string().nullish(),
+  threshold: z.union([z.string().nullish(), z.coerce.number()]),
 });
 
 export type PassportResponse = z.infer<typeof PassportResponseSchema>;
@@ -38,18 +53,20 @@ export const PassportResponseSchema = z.object({
  *
  * @param address
  * @param communityId
+ * @param apiKey
  * @returns
  */
 export const fetchPassport = (
   address: string,
-  communityId: string
+  communityId: string,
+  apiKey: string
 ): Promise<Response> => {
   const url = `${process.env.REACT_APP_PASSPORT_API_ENDPOINT}/registry/score/${communityId}/${address}`;
   return fetch(url, {
     method: "GET",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.REACT_APP_PASSPORT_API_KEY}`,
+      Authorization: `Bearer ${apiKey}`,
     },
   });
 };
@@ -59,11 +76,13 @@ export const fetchPassport = (
  *
  * @param address string
  * @param communityId string
+ * @param apiKey string
  * @returns
  */
 export const submitPassport = (
   address: string,
-  communityId: string
+  communityId: string,
+  apiKey: string
 ): Promise<Response> => {
   const url = `${process.env.REACT_APP_PASSPORT_API_ENDPOINT}/registry/submit-passport`;
 
@@ -71,14 +90,29 @@ export const submitPassport = (
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.REACT_APP_PASSPORT_API_KEY}`,
+      "X-API-Key": `${apiKey}`,
     },
     body: JSON.stringify({
-      address,
+      address: address,
       community: communityId,
       signature: "",
       nonce: "",
     }),
+  });
+};
+
+export const submitPassportLite = (
+  address: string,
+  apiKey: string
+): Promise<Response> => {
+  const url = `${process.env.REACT_APP_PASSPORT_API_ENDPOINT}/passport/analysis/${address}`;
+
+  return fetch(url, {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+      "X-API-Key": `${apiKey}`,
+    },
   });
 };
 
@@ -96,128 +130,6 @@ export type Payout = {
   version: string;
   createdAt: string;
 };
-
-// TODO relocate to data layer
-export const graphQlEndpoints: Record<ChainId, string> = {
-  [ChainId.DEV1]: process.env.REACT_APP_SUBGRAPH_DEV1_API!,
-  [ChainId.DEV2]: process.env.REACT_APP_SUBGRAPH_DEV2_API!,
-  [ChainId.PGN]: process.env.REACT_APP_SUBGRAPH_PGN_API!,
-  [ChainId.PGN_TESTNET]: process.env.REACT_APP_SUBGRAPH_PGN_TESTNET_API!,
-  [ChainId.MAINNET]: process.env.REACT_APP_SUBGRAPH_MAINNET_API!,
-  [ChainId.OPTIMISM_MAINNET_CHAIN_ID]:
-    process.env.REACT_APP_SUBGRAPH_OPTIMISM_MAINNET_API!,
-  [ChainId.FANTOM_MAINNET_CHAIN_ID]:
-    process.env.REACT_APP_SUBGRAPH_FANTOM_MAINNET_API!,
-  [ChainId.FANTOM_TESTNET_CHAIN_ID]:
-    process.env.REACT_APP_SUBGRAPH_FANTOM_TESTNET_API!,
-  [ChainId.ARBITRUM_GOERLI]:
-    process.env.REACT_APP_SUBGRAPH_ARBITRUM_GOERLI_API!,
-  [ChainId.ARBITRUM]: process.env.REACT_APP_SUBGRAPH_ARBITRUM_API!,
-  [ChainId.FUJI]: process.env.REACT_APP_SUBGRAPH_FUJI_API!,
-  [ChainId.AVALANCHE]: process.env.REACT_APP_SUBGRAPH_AVALANCHE_API!,
-  [ChainId.POLYGON]: process.env.REACT_APP_SUBGRAPH_POLYGON_API!,
-  [ChainId.POLYGON_MUMBAI]: process.env.REACT_APP_SUBGRAPH_POLYGON_MUMBAI_API!,
-  [ChainId.ZKSYNC_ERA_TESTNET_CHAIN_ID]:
-    process.env.REACT_APP_SUBGRAPH_ZKSYNC_TESTNET_API!,
-  [ChainId.ZKSYNC_ERA_MAINNET_CHAIN_ID]:
-    process.env.REACT_APP_SUBGRAPH_ZKSYNC_MAINNET_API!,
-  [ChainId.BASE]: process.env.REACT_APP_SUBGRAPH_BASE_API!,
-};
-
-/**
- * Fetch subgraph network for provided web3 network.
- * The backticks are here to work around a failure of a test that tetsts graphql_fetch,
- * and fails if the endpoint is undefined, so we convert the undefined to a string here in order not to fail the test.
- *
- * @param chainId - The chain ID of the blockchain
- * @returns the subgraph endpoint
- */
-export const getGraphQLEndpoint = (chainId: ChainId) =>
-  `${graphQlEndpoints[chainId]}`;
-
-/**
- * Fetch data from a GraphQL endpoint
- *
- * @param query - The query to be executed
- * @param chainId - The chain ID of the blockchain indexed by the subgraph
- * @param variables - The variables to be used in the query
- * @param fromProjectRegistry - Override to fetch from grant hub project registry subgraph
- * @returns The result of the query
- */
-export const graphql_fetch = async (
-  query: string,
-  chainId: ChainId,
-  // eslint-disable-next-line @typescript-eslint/ban-types
-  variables: object = {},
-  fromProjectRegistry = false
-) => {
-  let endpoint = getGraphQLEndpoint(chainId);
-
-  if (fromProjectRegistry) {
-    endpoint = endpoint.replace("grants-round", "grants-hub");
-  }
-
-  return fetch(endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ query, variables }),
-  }).then((resp) => {
-    if (resp.ok) {
-      return resp.json();
-    }
-
-    return Promise.reject(resp);
-  });
-};
-
-/**
- * Fetches the payouts that happened for a given round from TheGraph
- * @param roundId Round ID
- * @param chainId Chain ID
- * @returns
- */
-export function fetchProjectPaidInARound(
-  roundId: string,
-  chainId: ChainId
-): Promise<Payout[]> {
-  const { data } = useSWR(
-    [roundId, chainId],
-    ([roundId, chainId]: [roundId: string, chainId: ChainId]) => {
-      return graphql_fetch(
-        `
-        query GetPayouts($roundId: String) {
-          payoutStrategies(
-            where:{
-              round_:{
-                id: $roundId
-              }
-            }
-          ) {
-            payouts {
-              id
-              version
-              createdAt
-              token
-              amount
-              grantee
-              projectId
-              txnHash
-            }
-          }
-        }
-      `,
-        chainId,
-        { roundId }
-      );
-    }
-  );
-
-  const payouts = data?.data?.payoutStrategies[0]?.payouts || [];
-
-  return payouts;
-}
 
 export function formatDateWithOrdinal(date: Date) {
   const options = {
@@ -317,35 +229,52 @@ export const getUTCDateTime = (date: Date): string => {
   return `${getUTCDate(date)} ${getUTCTime(date)}`;
 };
 
-export const RedstoneTokenIds = {
-  FTM: "FTM",
-  USDC: "USDC",
-  DAI: "DAI",
-  ETH: "ETH",
-  ARB: "ARB",
-  BUSD: "BUSD",
-  GTC: "GTC",
-  MATIC: "MATIC",
-  AVAX: "AVAX",
-  CVP: "CVP",
-  USDT: "USDT",
-  LUSD: "LUSD",
-  MUTE: "MUTE",
-} as const;
+export const formatLocalDateAsISOString = (date: Date): string => {
+  // @ts-expect-error remove when DG support is merged
+  if (isNaN(date)) {
+    return "";
+  }
+  const localString = getLocalDate(date);
+  return localString;
+};
+
+export function getTimezoneName() {
+  const today = new Date();
+  const userTimeZone = moment.tz.guess();
+  const formattedDate = moment(today).tz(userTimeZone).format("z");
+
+  return formattedDate;
+}
+
+export const getLocalTime = (date: Date): string => {
+  const localTime = [
+    padSingleDigitNumberWithZero(date.getHours()),
+    padSingleDigitNumberWithZero(date.getMinutes()),
+  ];
+
+  return localTime.join(":") + " " + getTimezoneName();
+};
+
+export const getLocalDate = (date: Date): string => {
+  const localDate = [
+    padSingleDigitNumberWithZero(date.getFullYear()),
+    padSingleDigitNumberWithZero(date.getMonth() + 1),
+    padSingleDigitNumberWithZero(date.getDate()),
+  ];
+
+  return localDate.join("/");
+};
+
+export const getLocalDateTime = (date: Date): string => {
+  return `${getLocalDate(date)} ${getLocalTime(date)}`;
+};
 
 export const useTokenPrice = (tokenId: string | undefined) => {
   const [tokenPrice, setTokenPrice] = useState<number>();
-  const [error, setError] = useState<Response | undefined>();
+  const [error, setError] = useState<Error | undefined>(undefined);
   const [loading, setLoading] = useState(false);
 
-  if (!tokenId)
-    return {
-      data: 0,
-      error,
-      loading,
-    };
-
-  useMemo(async () => {
+  useEffect(() => {
     setLoading(true);
 
     const tokenPriceEndpoint = `https://api.redstone.finance/prices?symbol=${tokenId}&provider=redstone&limit=1`;
@@ -354,25 +283,38 @@ export const useTokenPrice = (tokenId: string | undefined) => {
         if (resp.ok) {
           return resp.json();
         } else {
-          setError(resp);
-          setLoading(false);
+          return resp.text().then((text) => {
+            throw new Error(text);
+          });
         }
       })
       .then((data) => {
-        if (data) {
+        if (data && data.length > 0) {
           setTokenPrice(data[0].value);
         } else {
-          setError(data);
+          throw new Error(`No data returned: ${data.toString()}`);
         }
-
-        setLoading(false);
       })
       .catch((err) => {
-        console.log("error fetching token price", { err });
+        console.log("error fetching token price", {
+          tokenId,
+          tokenPriceEndpoint,
+          err,
+        });
         setError(err);
+      })
+      .finally(() => {
         setLoading(false);
       });
   }, [tokenId]);
+
+  if (!tokenId) {
+    return {
+      data: 0,
+      error,
+      loading,
+    };
+  }
 
   return {
     data: tokenPrice,
@@ -388,7 +330,161 @@ export async function getTokenPrice(tokenId: string) {
   return data[0].value;
 }
 
-export const ROUND_PAYOUT_MERKLE = "MERKLE";
-export const ROUND_PAYOUT_DIRECT = "DIRECT";
-export type RoundPayoutType = "MERKLE" | "DIRECT";
+export const ROUND_PAYOUT_MERKLE_OLD = "MERKLE";
+export const ROUND_PAYOUT_MERKLE = "allov1.QF";
+export const ROUND_PAYOUT_DIRECT = "allov1.Direct";
+export const ROUND_PAYOUT_DIRECT_OLD = "DIRECT";
+export type RoundPayoutType =
+  | typeof ROUND_PAYOUT_DIRECT_OLD
+  | typeof ROUND_PAYOUT_MERKLE_OLD;
+export type RoundPayoutTypeNew =
+  | "allov1.Direct"
+  | "allov1.QF"
+  | "allov2.DonationVotingMerkleDistributionDirectTransferStrategy"
+  | "allov2.MicroGrantsStrategy"
+  | "allov2.MicroGrantsHatsStrategy"
+  | "allov2.SQFSuperFluidStrategy"
+  | "allov2.MicroGrantsGovStrategy"
+  | "allov2.DirectGrantsSimpleStrategy"
+  | "allov2.DirectGrantsLiteStrategy"
+  | "allov2.DirectAllocationStrategy"
+  | ""; // This is to handle the cases where the strategyName is not set in a round, mostly spam rounds
+
+export type RoundStrategyType = "QuadraticFunding" | "DirectGrants";
+
+export function getRoundStrategyTitle(name: string) {
+  switch (getRoundStrategyType(name)) {
+    case "DirectGrants":
+      return "Direct Grants";
+
+    case "QuadraticFunding":
+      return "Quadratic Funding";
+  }
+}
+
+export function getRoundStrategyType(name: string): RoundStrategyType {
+  switch (name) {
+    case "allov1.Direct":
+    case "DIRECT":
+    case "allov2.DirectGrantsSimpleStrategy":
+    case "allov2.DirectGrantsLiteStrategy":
+      return "DirectGrants";
+
+    case "allov1.QF":
+    case "MERKLE":
+    case "allov2.DonationVotingMerkleDistributionDirectTransferStrategy":
+      return "QuadraticFunding";
+
+    default:
+      throw new Error(`Unknown round strategy type: ${name}`);
+  }
+}
+
 export type RoundVisibilityType = "public" | "private";
+
+export { AlloError, AlloOperation } from "./allo/allo";
+export type { Allo } from "./allo/allo";
+export { AlloV1 } from "./allo/backends/allo-v1";
+export { AlloV2 } from "./allo/backends/allo-v2";
+export { createWaitForIndexerSyncTo } from "./allo/indexer";
+export type { WaitUntilIndexerSynced } from "./allo/indexer";
+export { createPinataIpfsUploader } from "./allo/ipfs";
+export { AlloContext, AlloProvider, useAllo } from "./allo/react";
+export {
+  createEthersTransactionSender,
+  createMockTransactionSender,
+  createViemTransactionSender,
+  decodeEventFromReceipt,
+  sendRawTransaction,
+  sendTransaction,
+} from "./allo/transaction-sender";
+
+export type AnyJson =
+  | boolean
+  | number
+  | string
+  | null
+  | undefined
+  | JsonArray
+  | JsonMap;
+interface JsonMap {
+  [key: string]: AnyJson;
+}
+type JsonArray = Array<AnyJson>;
+export interface Web3Instance {
+  /**
+   * Currently selected address in ETH format i.e 0x...
+   */
+  address: string;
+  /**
+   * Chain ID & name of the currently connected network
+   */
+  chain: {
+    id: number;
+    name: string;
+    network: Network;
+  };
+  provider: Web3Provider;
+  signer?: Signer;
+}
+
+export function roundToPassportIdAndKeyMap(round: Round): {
+  communityId: string;
+  apiKey: string;
+} {
+  const chainId = round?.chainId;
+  switch (chainId) {
+    case 43114: // Arbitrum
+      return {
+        communityId: getConfig().passport.passportAvalancheCommunityId,
+        apiKey: getConfig().passport.passportAvalancheAPIKey,
+      };
+    default:
+      return {
+        communityId: getConfig().passport.passportCommunityId,
+        apiKey: getConfig().passport.passportAPIKey,
+      };
+  }
+}
+
+export function roundToPassportURLMap(round: Round) {
+  const chainId = round.chainId;
+  switch (chainId) {
+    case 43114: // Arbitrum
+      return "https://passport.gitcoin.co/#/dashboard/avalanche";
+    default:
+      return "https://passport.gitcoin.co";
+  }
+}
+
+export * from "./allo/transaction-builder";
+
+/**
+ * Fetch the correct transaction block explorer link for the provided web3 network
+ *
+ * @param chainId - The chain ID of the blockchain
+ * @param txHash - The transaction hash
+ * @returns the transaction block explorer URL for the provided transaction hash and network
+ */
+export const getTxBlockExplorerLink = (chainId: number, txHash: string) => {
+  return getChainById(chainId)?.blockExplorer + "tx/" + txHash;
+};
+
+export function isChainIdSupported(chainId: number) {
+  if (chainId === 424 && getAlloVersion() === "allo-v2") {
+    return false;
+  }
+  return getChainById(chainId) !== undefined;
+}
+
+export function isLitUnavailable(chainId: number) {
+  return [
+    4201, // LUKSO_TESTNET,
+    42, // LUKSO,
+    713715, // SEI_DEVNET,
+    1329, // SEI_MAINNET,
+    1088, // METIS
+  ].includes(chainId);
+}
+
+export * from "./chains";

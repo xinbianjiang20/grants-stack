@@ -4,16 +4,15 @@ import { makeProgramData, renderWrapped } from "../../../test-utils";
 
 import { faker } from "@faker-js/faker";
 import moment from "moment";
-import { CHAINS } from "../../api/utils";
-import { useWallet } from "../../common/Auth";
 import { FormStepper } from "../../common/FormStepper";
 import { FormContext } from "../../common/FormWizard";
 import { RoundDetailForm } from "../RoundDetailForm";
-import { ChainId } from "common";
+import { getChainById } from "common";
 
 jest.mock("../../common/Auth");
 jest.mock("@rainbow-me/rainbowkit", () => ({
   ConnectButton: jest.fn(),
+  getDefaultConfig: jest.fn(),
 }));
 
 jest.mock("../../../constants", () => ({
@@ -21,11 +20,6 @@ jest.mock("../../../constants", () => ({
   errorModalDelayMs: 0, // NB: use smaller delay for faster tests
 }));
 
-beforeEach(() => {
-  (useWallet as jest.Mock).mockReturnValue({
-    chain: { id: ChainId.MAINNET },
-  });
-});
 
 describe("<RoundDetailForm />", () => {
   it("renders round name input", async () => {
@@ -346,9 +340,9 @@ describe("<RoundDetailForm />", () => {
   });
 
   it("renders program chain name", async () => {
-    const chain = CHAINS[ChainId.OPTIMISM_MAINNET_CHAIN_ID]!;
+    const chain = getChainById(10);
     const program = makeProgramData({
-      chain: { id: chain.id, name: chain.name, logo: chain.logo },
+      chain: { id: chain.id, name: chain.name, logo: chain.icon },
     });
 
     renderWrapped(

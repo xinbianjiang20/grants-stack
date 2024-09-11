@@ -1,5 +1,6 @@
 import "@testing-library/jest-dom";
 import { act, cleanup, screen } from "@testing-library/react";
+import { ProjectApplicationWithRound } from "data-layer";
 import { web3ChainIDLoaded } from "../../../../actions/web3";
 import setupStore from "../../../../store";
 import {
@@ -7,6 +8,7 @@ import {
   buildProjectApplication,
   buildRound,
   renderWrapped,
+  roundIdFrom,
 } from "../../../../utils/test_utils";
 import Rounds from "../Rounds";
 
@@ -21,60 +23,63 @@ jest.mock("react-router-dom", () => ({
 }));
 
 const buildActiveRound = (roundData: any) => {
-  const now = Date.now() / 1000;
+  const now = Date.now();
 
-  const applicationsStartTime = now - 20000;
-  const applicationsEndTime = now - 10000;
+  const applicationsStartTime = new Date(now - 2000000);
+  const applicationsEndTime = new Date(now - 1000000);
 
   const roundStartTime = applicationsEndTime;
-  const roundEndTime = now + 20000;
+  const roundEndTime = new Date(now + 20000000);
 
   const round = buildRound({
+    id: roundIdFrom(1),
     address: addressFrom(1),
     applicationsStartTime,
     applicationsEndTime,
-    roundStartTime,
-    roundEndTime,
+    donationsStartTime: roundStartTime,
+    donationsEndTime: roundEndTime,
     ...roundData,
   });
   return round;
 };
 
 const buildPastRound = (roundData: any) => {
-  const now = Date.now() / 1000;
+  const now = Date.now();
 
-  const applicationsStartTime = now - 2000;
-  const applicationsEndTime = now - 1000;
+  const applicationsStartTime = new Date(now - 2000000);
+  const applicationsEndTime = new Date(now - 1000000);
 
   const roundStartTime = applicationsEndTime;
-  const roundEndTime = now - 900;
+  const roundEndTime = new Date(now - 900000);
 
   const round = buildRound({
+    id: roundIdFrom(1),
     address: addressFrom(1),
     applicationsStartTime,
     applicationsEndTime,
-    roundStartTime,
-    roundEndTime,
+    donationsStartTime: roundStartTime,
+    donationsEndTime: roundEndTime,
     ...roundData,
   });
   return round;
 };
 
 const buildCurrentApplication = (roundData: any) => {
-  const now = Date.now() / 1000;
+  const now = Date.now();
 
-  const applicationsStartTime = now - 2000;
-  const applicationsEndTime = now + 2000;
+  const applicationsStartTime = new Date(now - 2000);
+  const applicationsEndTime = new Date(now + 2000);
 
   const roundStartTime = applicationsEndTime;
-  const roundEndTime = now + 3000;
+  const roundEndTime = new Date(now + 3000);
 
   const round = buildRound({
+    id: roundIdFrom(1),
     address: addressFrom(1),
     applicationsStartTime,
     applicationsEndTime,
-    roundStartTime,
-    roundEndTime,
+    donationsStartTime: roundStartTime,
+    donationsEndTime: roundEndTime,
     ...roundData,
   });
   return round;
@@ -85,48 +90,45 @@ describe("<Rounds />", () => {
     cleanup();
   });
 
-  describe("When the data is loading", () => {
-    test("should show loading", async () => {
-      await act(async () => {
-        renderWrapped(<Rounds />, setupStore());
-      });
-
-      expect(
-        screen.queryAllByText("Loading your information, please stand by...")
-          .length
-      ).toBeGreaterThan(0);
-    });
-  });
-
   describe("when the data is loaded", () => {
     test("should show the active rounds, badges and buttons", async () => {
       const store = setupStore();
       store.dispatch(web3ChainIDLoaded(5));
 
       const round1 = buildActiveRound({
+        id: roundIdFrom(1),
         address: addressFrom(1),
       });
       const round2 = buildActiveRound({
+        id: roundIdFrom(2),
         address: addressFrom(2),
       });
 
       store.dispatch({
         type: "ROUNDS_ROUND_LOADED",
-        address: addressFrom(1),
+        id: addressFrom(1),
         round: round1,
       });
       store.dispatch({
         type: "ROUNDS_ROUND_LOADED",
-        address: addressFrom(2),
+        id: addressFrom(2),
         round: round2,
       });
-      const applications = [];
+      const applications: ProjectApplicationWithRound[] = [];
       applications.push(
-        buildProjectApplication({ roundID: addressFrom(1), status: "APPROVED" })
+        buildProjectApplication({
+          roundId: addressFrom(1),
+          status: "APPROVED",
+          round: round1,
+        })
         // set the status directly here, saves some pain
       );
       applications.push(
-        buildProjectApplication({ roundID: addressFrom(2), status: "REJECTED" })
+        buildProjectApplication({
+          roundId: addressFrom(2),
+          status: "REJECTED",
+          round: round2,
+        })
       );
       store.dispatch({
         type: "PROJECT_APPLICATIONS_LOADED",
@@ -135,7 +137,7 @@ describe("<Rounds />", () => {
       });
 
       await act(async () => {
-        renderWrapped(<Rounds />, store);
+        renderWrapped(<Rounds applications={applications} />, store);
       });
 
       expect(screen.getByText("Active Rounds")).toBeInTheDocument();
@@ -155,21 +157,29 @@ describe("<Rounds />", () => {
 
       store.dispatch({
         type: "ROUNDS_ROUND_LOADED",
-        address: addressFrom(1),
+        id: addressFrom(1),
         round: round1,
       });
       store.dispatch({
         type: "ROUNDS_ROUND_LOADED",
-        address: addressFrom(2),
+        id: addressFrom(2),
         round: round2,
       });
-      const applications = [];
+      const applications: ProjectApplicationWithRound[] = [];
       applications.push(
-        buildProjectApplication({ roundID: addressFrom(1), status: "APPROVED" })
+        buildProjectApplication({
+          roundId: addressFrom(1),
+          status: "APPROVED",
+          round: round1,
+        })
         // set the status directly here, saves some pain
       );
       applications.push(
-        buildProjectApplication({ roundID: addressFrom(2), status: "REJECTED" })
+        buildProjectApplication({
+          roundId: addressFrom(2),
+          status: "REJECTED",
+          round: round2,
+        })
       );
       store.dispatch({
         type: "PROJECT_APPLICATIONS_LOADED",
@@ -178,7 +188,7 @@ describe("<Rounds />", () => {
       });
 
       await act(async () => {
-        renderWrapped(<Rounds />, store);
+        renderWrapped(<Rounds applications={applications} />, store);
       });
 
       expect(screen.getByText("Current Applications")).toBeInTheDocument();
@@ -192,26 +202,35 @@ describe("<Rounds />", () => {
 
       const round1 = buildPastRound({});
       const round2 = buildPastRound({
+        id: roundIdFrom(2),
         address: addressFrom(2),
       });
 
       store.dispatch({
         type: "ROUNDS_ROUND_LOADED",
-        address: addressFrom(1),
+        id: addressFrom(1),
         round: round1,
       });
       store.dispatch({
         type: "ROUNDS_ROUND_LOADED",
-        address: addressFrom(2),
+        id: addressFrom(2),
         round: round2,
       });
-      const applications = [];
+      const applications: ProjectApplicationWithRound[] = [];
       applications.push(
-        buildProjectApplication({ roundID: addressFrom(1), status: "APPROVED" })
+        buildProjectApplication({
+          roundId: addressFrom(1),
+          status: "APPROVED",
+          round: round1,
+        })
         // set the status directly here, saves some pain
       );
       applications.push(
-        buildProjectApplication({ roundID: addressFrom(2), status: "REJECTED" })
+        buildProjectApplication({
+          roundId: addressFrom(2),
+          status: "REJECTED",
+          round: round2,
+        })
       );
       store.dispatch({
         type: "PROJECT_APPLICATIONS_LOADED",
@@ -220,7 +239,7 @@ describe("<Rounds />", () => {
       });
 
       await act(async () => {
-        renderWrapped(<Rounds />, store);
+        renderWrapped(<Rounds applications={applications} />, store);
       });
 
       expect(screen.getByText("Past Rounds")).toBeInTheDocument();

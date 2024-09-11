@@ -1,14 +1,22 @@
-import { datadogLogs } from "@datadog/browser-logs";
-import { datadogRum } from "@datadog/browser-rum";
+import { Hex } from "viem";
+import { getBytecode } from "@wagmi/core";
 import { BigNumberish, ethers } from "ethers";
-import { ChainId } from "common";
+import { config } from "./wagmi";
+import gnosisABI from "../contracts/abis/gnosis.json";
 import { global } from "../global";
 import { AddressType, Metadata, Project } from "../types";
-import gnosisABI from "../contracts/abis/gnosis.json";
 
-export const ROUND_PAYOUT_MERKLE = "MERKLE";
-export const ROUND_PAYOUT_DIRECT = "DIRECT";
-
+/**
+ * Parse a round to apply string
+ *
+ * @remarks
+ *
+ * This function parses a round to apply string into its components.
+ *
+ * @param s The round to apply string
+ *
+ * @returns The chain ID and round address
+ */
 export const parseRoundToApply = (
   s?: string
 ): { chainID?: string; roundAddress?: string } => {
@@ -22,6 +30,14 @@ export const parseRoundToApply = (
   return { chainID, roundAddress };
 };
 
+/**
+ * Converts a metadata object to a project object
+ *
+ * @param m The metadata object
+ * @param lastUpdated The last updated timestamp
+ *
+ * @returns The project object
+ */
 export const metadataToProject = (
   m: Metadata,
   lastUpdated: number
@@ -48,46 +64,29 @@ export const metadataToProject = (
   return p;
 };
 
-export const getProjectURIComponents = (id: string) => {
-  const split = id.split(":");
-  if (split.length < 3) {
-    datadogRum.addError("Invalid project id", { id });
-    datadogLogs.logger.warn("Invalid project id", { id });
-    throw new Error("Invalid project ID");
-  }
-  return {
-    chainId: split[0],
-    registryAddress: split[1],
-    id: split[2],
-  };
-};
-
-export const getProviderByChainId = (chainId: ChainId) => {
-  const { web3Provider } = global;
-
-  const chainConfig = web3Provider?.chains?.find(
-    // Yes, parameter type for chainId is number, but sometimes we pass it as a string
-    // so adding a cast to Number just in case
-    (i) => i.id === Number(chainId)
-  );
-
-  if (!chainConfig) {
-    throw new Error(`chainConfig not found for chain ID ${chainId}`);
-  }
-
-  // TODO: Create a more robust RPC here to avoid fails
-  return ethers.getDefaultProvider(chainConfig.rpcUrls.default.http[0]);
-};
-
+/**
+ * Get the address type of an address
+ *
+ * @remarks
+ *
+ * This function checks if the address is a contract and if it is a safe.
+ *
+ * @param address
+ *
+ * @returns The address type
+ */
 export const getAddressType = async (address: string): Promise<AddressType> => {
   const { web3Provider } = global;
 
   const returnValue = { resolved: false, isContract: false, isSafe: false };
 
   if (web3Provider) {
-    const addressCode = await web3Provider.getCode(address);
+    const addressCode = await getBytecode(config, {
+      address: address as Hex,
+      chainId: (web3Provider as any).chain.id,
+    });
 
-    returnValue.isContract = addressCode !== "0x";
+    returnValue.isContract = !!addressCode;
 
     if (returnValue.isContract) {
       try {

@@ -1,8 +1,7 @@
 import { VerifiableCredential } from "@gitcoinco/passport-sdk-types";
-import { ChainId } from "common";
+import { ProjectApplicationWithRound, RoundCategory } from "data-layer";
+import { RoundApplicationMetadata } from "data-layer/dist/roundApplication.types";
 import { ReactNode } from "react";
-import { RoundApplicationMetadata } from "./roundApplication";
-import { Application } from "../reducers/projects";
 
 export type Images = {
   bannerImg?: Blob;
@@ -24,6 +23,11 @@ export interface Metadata {
   credentials?: ProjectCredentials;
   createdAt?: number;
   updatedAt?: number;
+  chainId: number;
+  linkedChains?: number[];
+  nonce?: bigint;
+  registryAddress: string;
+  projectNumber?: number | null;
 }
 
 export interface Project {
@@ -102,15 +106,6 @@ export type AddressInputProps = {
   };
 };
 
-export type ProjectEvents = {
-  createdAtBlock: number | undefined;
-  updatedAtBlock: number | undefined;
-};
-
-export type ProjectEventsMap = {
-  [projectID: string]: ProjectEvents;
-};
-
 export interface MetaPtr {
   protocol: string;
   pointer: string;
@@ -141,6 +136,7 @@ export interface JWK {
 }
 
 export type Round = {
+  id: string;
   address: string;
   applicationsStartTime: number;
   applicationsEndTime: number;
@@ -152,7 +148,8 @@ export type Round = {
   applicationMetaPtr: MetaPtr;
   applicationMetadata: RoundApplicationMetadata;
   programName: string;
-  payoutStrategy: string;
+  payoutStrategy: RoundCategory;
+  tags: string[];
 };
 
 export enum RoundDisplayType {
@@ -162,16 +159,17 @@ export enum RoundDisplayType {
 }
 
 export type ApplicationCardType = {
-  application: Application;
+  application: ProjectApplicationWithRound;
   roundID: string;
-  chainId: ChainId;
+  chainId: number;
 };
 
 export type ProjectOption = {
   id: string | undefined;
+  anchor?: string;
   title?: string;
   chainInfo?: {
-    chainId: ChainId;
+    chainId: number;
     chainName: string;
     icon?: any;
   };
@@ -244,9 +242,3 @@ export enum CredentialProvider {
   Twitter = "ClearTextTwitter",
   Github = "ClearTextGithubOrg",
 }
-
-export type {
-  RoundApplicationMetadata,
-  RoundApplicationQuestion,
-  ProjectRequirements,
-} from "./roundApplication";

@@ -1,42 +1,35 @@
+import { useDataLayer } from "data-layer";
 import { useEffect } from "react";
 import { shallowEqual, useDispatch, useSelector } from "react-redux";
 import { Link, useParams } from "react-router-dom";
 import { fetchGrantData } from "../../actions/grantsMetadata";
-import {
-  loadAllChainsProjects,
-  loadProjectOwners,
-} from "../../actions/projects";
-import { global } from "../../global";
 import { RootState } from "../../reducers";
 import { Status } from "../../reducers/grantsMetadata";
 import { editPath, grantsPath } from "../../routes";
 import colors from "../../styles/colors";
-import { getProjectImage, ImgTypes } from "../../utils/components";
-import { getProjectURIComponents } from "../../utils/utils";
+import { ImgTypes, getProjectImage } from "../../utils/components";
 import Button, { ButtonVariants } from "../base/Button";
+import PageNotFound from "../base/PageNotFound";
 import Arrow from "../icons/Arrow";
 import Pencil from "../icons/Pencil";
 import Details from "./Details";
-import PageNotFound from "../base/PageNotFound";
 
 function Project() {
+  const dataLayer = useDataLayer();
+
   const dispatch = useDispatch();
   // FIXME: params.id doesn't change if the location hash is changed manually.
   const params = useParams();
 
   const props = useSelector((state: RootState) => {
-    const fullId = `${params.chainId}:${params.registryAddress}:${params.id}`;
-
-    const grantMetadata = state.grantsMetadata[fullId];
-    const owners = state.projects.owners[fullId];
-
+    const grantMetadata = state.grantsMetadata[params.id!];
+    const chainId = grantMetadata?.metadata?.chainId;
+    const owners = state.projects.owners[params.id!];
     const loading = grantMetadata
       ? grantMetadata.status === Status.Loading
       : false;
-
     const loadingFailed =
       grantMetadata && grantMetadata.status === Status.Error;
-
     const bannerImg = getProjectImage(
       loading,
       ImgTypes.bannerImg,
@@ -49,7 +42,8 @@ function Project() {
     );
 
     return {
-      id: fullId,
+      id: params.id,
+      chainId,
       loading,
       loadingFailed,
       bannerImg,
@@ -57,7 +51,6 @@ function Project() {
       owners,
       currentProject: grantMetadata?.metadata,
       signerAddress: state.web3.account,
-      projectEvents: state.projects.events[fullId],
     };
   }, shallowEqual);
 
@@ -66,31 +59,13 @@ function Project() {
     // 1 - when it loads or id changes (it checks if it's cached in local storage)
     // 2 - when ipfs is initialized (it fetches it if not loaded yet)
     if (props.id !== undefined && props.currentProject === undefined) {
-      dispatch(fetchGrantData(props.id));
+      dispatch(fetchGrantData(props.id, dataLayer));
     }
   }, [dispatch, props.id, props.currentProject]);
 
-  useEffect(() => {
-    if (props.projectEvents === undefined) {
-      dispatch(loadAllChainsProjects(true));
-    }
-
-    if (props.owners === undefined) {
-      dispatch(loadProjectOwners(props.id));
-    }
-  }, [props.id, props.projectEvents, global, dispatch]);
-
-  if (
-    props.currentProject === undefined &&
-    props.loading &&
-    props.currentProject
-  ) {
-    return <>Loading grant data from IPFS... </>;
-  }
-
   function createEditPath() {
-    const { chainId, registryAddress, id } = getProjectURIComponents(props.id);
-    return editPath(chainId, registryAddress, id);
+    const registryAddress = "0x"; // TODO: fix (technically, we dont need the regsitry address anymore)
+    return editPath(props.chainId!.toString(), registryAddress, props.id!);
   }
 
   if (props.loadingFailed) {
@@ -114,24 +89,38 @@ function Project() {
                 Project Details
               </h3>
             </Link>
-            {props.id &&
-              props.owners &&
-              props.owners.includes(props.signerAddress!) && (
-                <Link
-                  to={createEditPath()}
-                  className="sm:w-auto mx-w-full ml-0"
+            <div className="flex gap-5">
+              <Link
+                to={`${process.env.REACT_APP_GRANT_EXPLORER}/#/projects/${props.id}`}
+                className="sm:w-auto mx-w-full ml-0"
+                target="_blank"
+              >
+                <Button
+                  variant={ButtonVariants.primary}
+                  styles={["sm:w-auto mx-w-full ml-0"]}
                 >
-                  <Button
-                    variant={ButtonVariants.outline}
-                    styles={["sm:w-auto mx-w-full ml-0"]}
+                  View Public Profile
+                </Button>
+              </Link>
+              {props.id &&
+                props.owners &&
+                props.owners.includes(props.signerAddress!) && (
+                  <Link
+                    to={createEditPath()}
+                    className="sm:w-auto mx-w-full ml-0"
                   >
-                    <i className="icon mt-1">
-                      <Pencil color={colors["secondary-text"]} />
-                    </i>
-                    &nbsp; Edit
-                  </Button>
-                </Link>
-              )}
+                    <Button
+                      variant={ButtonVariants.outline}
+                      styles={["sm:w-auto mx-w-full ml-0"]}
+                    >
+                      <i className="icon mt-1">
+                        <Pencil color={colors["secondary-text"]} />
+                      </i>
+                      &nbsp; Edit
+                    </Button>
+                  </Link>
+                )}
+            </div>
           </div>
           <Details
             project={props.currentProject}

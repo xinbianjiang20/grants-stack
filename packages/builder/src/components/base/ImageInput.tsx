@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { getConfig } from "common/src/config";
-import PinataClient from "../../services/pinata";
+import PinataClient from "common/src/services/pinata";
 import colors from "../../styles/colors";
 import CloudUpload from "../icons/CloudUpload";
 import ImageCrop from "./images/ImageCrop";
@@ -153,7 +153,7 @@ export default function ImageInput({
             className="hidden"
             type="file"
             name="file"
-            accept=".png,.jpg"
+            accept=".png,.jpg,.jpeg"
           />
           {fileInput && (
             <button

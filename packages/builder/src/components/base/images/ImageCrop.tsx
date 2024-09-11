@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 import ReactCrop, {
   centerCrop,
@@ -12,7 +12,7 @@ import buildCanvas from "./buildCanvas";
 import "react-image-crop/dist/ReactCrop.css";
 import Button, { ButtonVariants } from "../Button";
 
-// This is to demonstate how to make and center a % aspect crop
+// This is to demonstrate how to make and center a % aspect crop
 // which is a bit trickier, so we use some helper functions.
 function centerAspectCrop(
   mediaWidth: number,
@@ -91,8 +91,6 @@ export default function ImageCrop({
               setCompletedCrop(c);
             }}
             aspect={dimensions.width / dimensions.height}
-            maxHeight={dimensions.height}
-            maxWidth={dimensions.width}
           >
             <img
               ref={imgRef}
@@ -103,6 +101,9 @@ export default function ImageCrop({
             />
           </ReactCrop>
         )}
+        <div className="flex w-full" />
+        Note: Transparent sections in images will default to black when
+        uploaded. Please consider using a non-transparent background.
         <div className="flex w-full">
           <Button
             styles={["w-1/2 justify-center"]}

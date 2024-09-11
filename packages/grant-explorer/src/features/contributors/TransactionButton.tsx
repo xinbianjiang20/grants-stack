@@ -1,20 +1,20 @@
 import { Button } from "common/src/styles";
-import { getTxExplorerTxLink } from "../api/utils";
+import { getTxBlockExplorerLink } from "common";
 import { ArrowTopRightOnSquareIcon } from "@heroicons/react/24/outline";
 
 export function TransactionButton(props: { chainId: number; txHash: string }) {
   return (
     <a
       target={"_blank"}
-      href={getTxExplorerTxLink(props.chainId, props.txHash)}
+      href={getTxBlockExplorerLink(props.chainId, props.txHash)}
     >
       <Button
         type="button"
         $variant="external-link"
-        className="flex flex-row text-gitcoin-violet-500 px-0"
+        className="flex flex-row items-center border border-grey-100 rounded-lg text-black font-mono p-2"
       >
         <ArrowTopRightOnSquareIcon className="h-5 inline mx-2" />
-        <div>View transaction</div>
+        <span>View</span>
       </Button>
     </a>
   );

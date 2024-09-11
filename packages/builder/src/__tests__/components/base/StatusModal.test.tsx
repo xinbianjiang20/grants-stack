@@ -1,21 +1,43 @@
 import "@testing-library/jest-dom";
 import { screen } from "@testing-library/react";
 import StatusModal from "../../../components/base/StatusModal";
-import { applicationSteps, grantSteps } from "../../../utils/steps";
 import setupStore from "../../../store";
+import { getApplicationSteps, grantSteps } from "../../../utils/steps";
 import { renderWrapped } from "../../../utils/test_utils";
 
 describe("<StatusModal /> with applicationSteps", () => {
   const scenarios = [
     {
       error: false,
-      currentStep: applicationSteps[0],
-      icons: ["current", "waiting", "waiting", "waiting", "waiting", "waiting"],
+      currentStep: getApplicationSteps()[0],
+      icons: [
+        "current",
+        "waiting",
+        "waiting",
+        "waiting",
+        "waiting",
+        "waiting",
+        "waiting",
+      ],
     },
     {
       error: false,
-      currentStep: applicationSteps[1],
+      currentStep: getApplicationSteps()[1],
       icons: [
+        "completed",
+        "current",
+        "waiting",
+        "waiting",
+        "waiting",
+        "waiting",
+        "waiting",
+      ],
+    },
+    {
+      error: false,
+      currentStep: getApplicationSteps()[2],
+      icons: [
+        "completed",
         "completed",
         "current",
         "waiting",
@@ -26,8 +48,9 @@ describe("<StatusModal /> with applicationSteps", () => {
     },
     {
       error: false,
-      currentStep: applicationSteps[2],
+      currentStep: getApplicationSteps()[3],
       icons: [
+        "completed",
         "completed",
         "completed",
         "current",
@@ -38,8 +61,9 @@ describe("<StatusModal /> with applicationSteps", () => {
     },
     {
       error: false,
-      currentStep: applicationSteps[3],
+      currentStep: getApplicationSteps()[4],
       icons: [
+        "completed",
         "completed",
         "completed",
         "completed",
@@ -50,8 +74,9 @@ describe("<StatusModal /> with applicationSteps", () => {
     },
     {
       error: false,
-      currentStep: applicationSteps[4],
+      currentStep: getApplicationSteps()[5],
       icons: [
+        "completed",
         "completed",
         "completed",
         "completed",
@@ -62,8 +87,9 @@ describe("<StatusModal /> with applicationSteps", () => {
     },
     {
       error: false,
-      currentStep: applicationSteps[5],
+      currentStep: getApplicationSteps()[6],
       icons: [
+        "completed",
         "completed",
         "completed",
         "completed",
@@ -77,18 +103,48 @@ describe("<StatusModal /> with applicationSteps", () => {
 
     {
       error: true,
-      currentStep: applicationSteps[0],
-      icons: ["error", "waiting", "waiting", "waiting", "waiting", "waiting"],
-    },
-    {
-      error: true,
-      currentStep: applicationSteps[1],
-      icons: ["completed", "error", "waiting", "waiting", "waiting", "waiting"],
-    },
-    {
-      error: true,
-      currentStep: applicationSteps[2],
+      currentStep: getApplicationSteps()[0],
       icons: [
+        "error",
+        "waiting",
+        "waiting",
+        "waiting",
+        "waiting",
+        "waiting",
+        "waiting",
+      ],
+    },
+    {
+      error: true,
+      currentStep: getApplicationSteps()[1],
+      icons: [
+        "completed",
+        "error",
+        "waiting",
+        "waiting",
+        "waiting",
+        "waiting",
+        "waiting",
+      ],
+    },
+    {
+      error: true,
+      currentStep: getApplicationSteps()[2],
+      icons: [
+        "completed",
+        "completed",
+        "error",
+        "waiting",
+        "waiting",
+        "waiting",
+        "waiting",
+      ],
+    },
+    {
+      error: true,
+      currentStep: getApplicationSteps()[3],
+      icons: [
+        "completed",
         "completed",
         "completed",
         "error",
@@ -99,8 +155,9 @@ describe("<StatusModal /> with applicationSteps", () => {
     },
     {
       error: true,
-      currentStep: applicationSteps[3],
+      currentStep: getApplicationSteps()[4],
       icons: [
+        "completed",
         "completed",
         "completed",
         "completed",
@@ -111,8 +168,9 @@ describe("<StatusModal /> with applicationSteps", () => {
     },
     {
       error: true,
-      currentStep: applicationSteps[4],
+      currentStep: getApplicationSteps()[5],
       icons: [
+        "completed",
         "completed",
         "completed",
         "completed",
@@ -123,8 +181,9 @@ describe("<StatusModal /> with applicationSteps", () => {
     },
     {
       error: true,
-      currentStep: applicationSteps[5],
+      currentStep: getApplicationSteps()[6],
       icons: [
+        "completed",
         "completed",
         "completed",
         "completed",
@@ -154,7 +213,7 @@ describe("<StatusModal /> with applicationSteps", () => {
             open
             onClose={() => {}}
             currentStatus={scenario.currentStep.status}
-            steps={applicationSteps}
+            steps={getApplicationSteps()}
             title="Test Modal Use case."
             error={
               scenario.error
@@ -169,7 +228,7 @@ describe("<StatusModal /> with applicationSteps", () => {
         );
       });
 
-      applicationSteps.forEach((step, index) => {
+      getApplicationSteps().forEach((step, index) => {
         test(testName(step, scenario.icons[index]), async () => {
           const stepElement = screen.getByTestId(`step-${step.name}`);
           const iconElement = stepElement.querySelector(".step-icon")!;

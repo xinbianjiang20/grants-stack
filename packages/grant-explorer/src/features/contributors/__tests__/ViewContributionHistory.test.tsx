@@ -7,76 +7,79 @@ import {
 import { MemoryRouter } from "react-router-dom";
 import { BreadcrumbItem } from "../../common/Breadcrumb";
 import { zeroAddress } from "viem";
-import { VotingToken } from "../../api/types";
+
+import { Contribution } from "data-layer";
 
 const mockAddress = faker.finance.ethereumAddress();
 
-const mockTokens: Record<string, VotingToken> = {
-  ETH: {
-    name: "Ethereum",
-    chainId: 1,
-    address: "0x0000000000000000000000000000000000000000",
-    decimal: 18,
-    logo: "https://example.com/eth_logo.png",
-    default: true,
-    redstoneTokenId: "abc123",
-    defaultForVoting: true,
-    canVote: true,
-  },
-  DAI: {
-    name: "Dai",
-    chainId: 1,
-    address: "0x123456789abcdef",
-    decimal: 18,
-    defaultForVoting: true,
-    canVote: true,
-    redstoneTokenId: "DAI",
-  },
-};
-
-const mockContributions = [
+const mockContributions: Contribution[] = [
   {
+    id: "1",
     chainId: 1,
-    data: [
-      {
-        id: "1",
-        projectId: "project1",
-        roundId: "round1",
-        applicationId: "0",
-        token: "ETH",
-        voter: "voter1",
-        grantAddress: faker.finance.ethereumAddress(),
-        amount: "10",
-        amountUSD: 100,
-        transaction: "transaction1",
-        roundName: "Round 1",
-        projectTitle: "Project 1",
-        roundStartTime: Number(faker.date.past()),
-        roundEndTime: Number(faker.date.future()),
-        timestamp: 0n,
+    projectId: "project1",
+    roundId: "round1",
+    recipientAddress: "recipient1",
+    applicationId: "0",
+    tokenAddress: "ETH",
+    donorAddress: "voter1",
+    amount: "10",
+    amountInUsd: 100,
+    transactionHash: "transaction1",
+    blockNumber: 12345,
+    round: {
+      roundMetadata: {
+        name: "Round 1",
+        roundType: "public",
+        eligibility: {
+          description: "Eligibility description",
+          requirements: [{ requirement: "Requirement 1" }],
+        },
+        programContractAddress: "0x1",
       },
-      {
-        id: "2",
-        projectId: "project2",
-        roundId: "round1",
-        applicationId: "1",
-        token: "ETH",
-        voter: "voter2",
-        grantAddress: faker.finance.ethereumAddress(),
-        amount: "20",
-        amountUSD: 200,
-        transaction: "transaction2",
-        roundName: "Round 2",
-        projectTitle: "Project 2",
-        roundStartTime: Number(faker.date.past()),
-        roundEndTime: Number(faker.date.past()),
-        timestamp: 0n,
+      donationsStartTime: faker.date.past().toISOString(),
+      donationsEndTime: faker.date.future().toISOString(),
+      strategyName: "",
+    },
+    application: {
+      project: {
+        name: "Project 1",
       },
-    ],
+    },
+    timestamp: "0",
   },
   {
-    chainId: 10,
-    data: [],
+    id: "2",
+    chainId: 1,
+    projectId: "project2",
+    roundId: "round1",
+    recipientAddress: "recipient2",
+    applicationId: "1",
+    tokenAddress: "ETH",
+    donorAddress: "voter2",
+    amount: "20",
+    amountInUsd: 200,
+    transactionHash: "transaction2",
+    blockNumber: 12346,
+    round: {
+      roundMetadata: {
+        name: "Round 2",
+        roundType: "public",
+        eligibility: {
+          description: "Eligibility description",
+          requirements: [{ requirement: "Requirement 1" }],
+        },
+        programContractAddress: "0x1",
+      },
+      donationsStartTime: faker.date.past().toISOString(),
+      donationsEndTime: faker.date.past().toISOString(),
+      strategyName: "",
+    },
+    application: {
+      project: {
+        name: "Project 2",
+      },
+    },
+    timestamp: "0",
   },
 ];
 
@@ -138,8 +141,7 @@ describe("<ViewContributionHistory/>", () => {
     render(
       <MemoryRouter>
         <ViewContributionHistory
-          tokens={mockTokens}
-          contributions={mockContributions}
+          contributions={{ chainIds: [1], data: mockContributions }}
           address={mockAddress}
           addressLogo="mockedAddressLogo"
           breadCrumbs={breadCrumbs}
@@ -157,17 +159,13 @@ describe("<ViewContributionHistory/>", () => {
     expect(screen.getByText("Share Profile")).toBeInTheDocument();
 
     for (const contribution of mockContributions) {
-      for (const chainContribution of contribution.data) {
-        expect(
-          screen.getByText(chainContribution.roundName)
-        ).toBeInTheDocument();
-        expect(
-          screen.getByText(chainContribution.projectTitle)
-        ).toBeInTheDocument();
-        expect(screen.getAllByText("View transaction").length).toBeGreaterThan(
-          0
-        );
-      }
+      expect(
+        screen.getByText(contribution.round.roundMetadata.name)
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(contribution.application.project.name)
+      ).toBeInTheDocument();
+      expect(screen.getAllByText("View").length).toBeGreaterThan(0);
     }
   });
 });

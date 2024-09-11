@@ -1,14 +1,31 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import {
-  CreateRoundContext,
-  CreateRoundState,
-  initialCreateRoundState,
-} from "../../../context/round/CreateRoundContext";
 import { EditQuestion } from "../../api/types";
 import AddQuestionModal from "../AddQuestionModal";
 
 jest.mock("../../api/round");
+jest.mock("../../../features/common/Auth", () => ({
+  useWallet: () => mockWallet,
+}));
+jest.mock("wagmi", () => ({
+  useAccount: () => ({
+    chainId: 1,
+  }),
+}));
+
+const mockWallet = {
+  address: "0x0",
+  provider: { getNetwork: () => Promise.resolve({ chainId: "1" }) },
+  signer: {
+    getChainId: () => {
+      /* do nothing.*/
+    },
+  },
+  chain: {
+    id: 1,
+    name: "Ethereum",
+  },
+};
 
 const editQuestion: EditQuestion = {
   index: 0,
@@ -111,16 +128,5 @@ describe("AddQuestionModal", () => {
   });
 });
 
-export const renderWithContext = (
-  ui: JSX.Element,
-  createRoundStateOverrides: Partial<CreateRoundState> = {}
-) =>
-  render(
-    <MemoryRouter>
-      <CreateRoundContext.Provider
-        value={{ ...initialCreateRoundState, ...createRoundStateOverrides }}
-      >
-        {ui}
-      </CreateRoundContext.Provider>
-    </MemoryRouter>
-  );
+export const renderWithContext = (ui: JSX.Element) =>
+  render(<MemoryRouter>{ui}</MemoryRouter>);

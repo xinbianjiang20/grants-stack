@@ -6,11 +6,6 @@ import { formatBytes32String, parseEther } from "ethers/lib/utils";
 import React from "react";
 import { MemoryRouter } from "react-router-dom";
 import {
-  ApplicationContext,
-  ApplicationState,
-  initialApplicationState,
-} from "./context/application/ApplicationContext";
-import {
   BulkUpdateGrantApplicationContext,
   BulkUpdateGrantApplicationState,
   initialBulkUpdateGrantApplicationState,
@@ -34,7 +29,6 @@ import {
   ApplicationStatus,
   ApprovedProject,
   GrantApplication,
-  MatchingStatsData,
   Program,
   ProjectCredentials,
   ProjectMetadata,
@@ -43,7 +37,12 @@ import {
 } from "./features/api/types";
 import { IAM_SERVER } from "./features/round/ViewApplicationPage";
 import moment from "moment";
-import { ROUND_PAYOUT_DIRECT, ROUND_PAYOUT_MERKLE } from "common";
+import {
+  ROUND_PAYOUT_DIRECT_OLD as ROUND_PAYOUT_DIRECT,
+  ROUND_PAYOUT_MERKLE_OLD as ROUND_PAYOUT_MERKLE,
+} from "common";
+import { zeroAddress } from "viem";
+import { DistributionMatch } from "data-layer";
 
 export const mockedOperatorWallet = faker.finance.ethereumAddress();
 
@@ -52,12 +51,15 @@ export const makeProgramData = (overrides: Partial<Program> = {}): Program => ({
   metadata: {
     name: faker.company.bsBuzz(),
   },
-  // TODO add this back in for createProgram
-  // store: {
-  //   protocol: randomInt(1, 10),
-  //   pointer: faker.random.alpha({ count: 59, casing: "lower" })
-  // },
   operatorWallets: [mockedOperatorWallet],
+  roles: [
+    {
+      address: mockedOperatorWallet,
+      role: "OWNER",
+      createdAtBlock: "0",
+    },
+  ],
+  tags: ["program"],
   ...overrides,
 });
 
@@ -70,6 +72,7 @@ export const makeRoundData = (overrides: Partial<Round> = {}): Round => {
   const protocolFeePercentage = 10000;
   return {
     id: faker.finance.ethereumAddress(),
+    strategyName: "allov2.DonationVotingMerkleDistributionDirectTransferStrategy",
     chainId: 1,
     roundMetadata: {
       name: faker.company.name(),
@@ -89,7 +92,7 @@ export const makeRoundData = (overrides: Partial<Round> = {}): Round => {
         matchingFundsAvailable: 1000,
         minDonationThreshold: true,
         minDonationThresholdAmount: 1,
-        sybilDefense: false,
+        sybilDefense: "none",
       },
     },
     applicationsStartTime,
@@ -107,7 +110,21 @@ export const makeRoundData = (overrides: Partial<Round> = {}): Round => {
     roundFeePercentage,
     ownedBy: faker.finance.ethereumAddress(),
     operatorWallets: [mockedOperatorWallet],
+    roles: [
+      {
+        address: mockedOperatorWallet,
+        role: "OWNER",
+        createdAtBlock: "0",
+      },
+    ],
     finalized: false,
+    tags: ["allo-v2"],
+    matchAmount: 0n,
+    matchAmountInUsd: 0,
+    fundedAmount: 0n,
+    fundedAmountInUsd: 0,
+    matchingDistribution: null,
+    readyForPayoutTransaction: null,
     ...overrides,
   };
 };
@@ -123,6 +140,7 @@ export const makeDirectGrantRoundData = (
   const protocolFeePercentage = 10000;
   return {
     id: faker.finance.ethereumAddress(),
+    strategyName: "allov2.DonationVotingMerkleDistributionDirectTransferStrategy",
     chainId: 1,
     roundMetadata: {
       name: faker.company.name(),
@@ -142,7 +160,7 @@ export const makeDirectGrantRoundData = (
         matchingFundsAvailable: 1000,
         minDonationThreshold: true,
         minDonationThresholdAmount: 1,
-        sybilDefense: false,
+        sybilDefense: "none",
       },
     },
     applicationsStartTime,
@@ -160,22 +178,35 @@ export const makeDirectGrantRoundData = (
     roundFeePercentage,
     ownedBy: faker.finance.ethereumAddress(),
     operatorWallets: [mockedOperatorWallet],
+    roles: [
+      {
+        address: mockedOperatorWallet,
+        role: "OWNER",
+        createdAtBlock: "0",
+      },
+    ],
     finalized: false,
+    matchAmount: 0n,
+    matchAmountInUsd: 0,
+    fundedAmount: 0n,
+    fundedAmountInUsd: 0,
+    matchingDistribution: null,
+    readyForPayoutTransaction: null,
     ...overrides,
   };
 };
 
-export const makeMatchingStatsData = (): MatchingStatsData => {
+export const makeMatchingStatsData = (): DistributionMatch => {
   return {
     projectName: faker.company.name(),
     applicationId: faker.datatype.number().toString(),
     projectId: formatBytes32String(faker.company.name().slice(0, 31)),
-    uniqueContributorsCount: faker.datatype.number(),
     contributionsCount: faker.datatype.number(),
     matchPoolPercentage: faker.datatype.number(),
-    matchAmountInToken: parseEther(faker.datatype.number().toString()),
-    originalMatchAmountInToken: parseEther(faker.datatype.number().toString()),
+    matchAmountInToken: faker.datatype.number().toString(),
+    originalMatchAmountInToken: faker.datatype.number().toString(),
     projectPayoutAddress: faker.finance.ethereumAddress(),
+    anchorAddress: faker.finance.ethereumAddress(),
   };
 };
 
@@ -193,6 +224,8 @@ export const makeApplication = (): GrantApplication => {
     ] as ProjectStatus,
     applicationIndex: faker.datatype.number(),
     createdAt: faker.date.past().toDateString(),
+    anchorAddress: faker.finance.ethereumAddress(),
+    distributionTransaction: null,
   };
 };
 
@@ -310,19 +343,19 @@ export const makeGrantApplicationData = (
 
     payoutStrategy: payoutStrategy ?? {
       strategyName: ROUND_PAYOUT_MERKLE,
-      id: faker.random.alpha({ count: 59, casing: "lower" }),
+      id: zeroAddress,
       payouts: [],
     },
 
     statusSnapshots: statusSnapshots ?? [
       {
         status: "PENDING",
-        statusDescription: "PENDING",
-        timestamp: moment().subtract(1, "days").toDate(),
+        updatedAt: moment().subtract(1, "days").toDate(),
       },
     ],
 
     recipient: faker.finance.ethereumAddress(),
+    distributionTransaction: null,
     inReview: inReview ?? false,
     project: {
       lastUpdated: 1659714564,
@@ -338,10 +371,6 @@ export const makeGrantApplicationData = (
       website: faker.internet.domainName(),
       bannerImg: faker.random.alpha({ count: 59, casing: "lower" }),
       logoImg: faker.random.alpha({ count: 59, casing: "lower" }),
-      metaPtr: {
-        protocol: randomInt(1, 10),
-        pointer: faker.random.alpha({ count: 59, casing: "lower" }),
-      },
       projectGithub: projectGithubOverride ?? undefined,
       projectTwitter: projectTwitterOverride ?? undefined,
       credentials: makeProjectCredentials(credentialInputData, ownerAddress),
@@ -358,6 +387,7 @@ export const makeGrantApplicationData = (
         randomInt(0, 4)
       ] as ProjectStatus),
     applicationIndex: applicationIndex ?? faker.datatype.number(),
+    anchorAddress: faker.finance.ethereumAddress(),
     createdAt: faker.datatype.number().toString(),
   };
 };
@@ -417,47 +447,6 @@ export const renderWithProgramContext = (
       </ReadProgramContext.Provider>
     </MemoryRouter>
   );
-
-export const renderWithApplicationContext = (
-  ui: JSX.Element,
-  grantApplicationStateOverrides: Partial<ApplicationState> = {},
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  dispatch: any = jest.fn()
-) =>
-  render(
-    <MemoryRouter>
-      <ApplicationContext.Provider
-        value={{
-          state: {
-            ...initialApplicationState,
-            ...grantApplicationStateOverrides,
-          },
-          dispatch,
-        }}
-      >
-        {ui}
-      </ApplicationContext.Provider>
-    </MemoryRouter>
-  );
-
-export const wrapWithApplicationContext = (
-  ui: JSX.Element,
-  grantApplicationStateOverrides: Partial<ApplicationState> = {},
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  dispatch: any = jest.fn()
-) => (
-  <ApplicationContext.Provider
-    value={{
-      state: {
-        ...initialApplicationState,
-        ...grantApplicationStateOverrides,
-      },
-      dispatch,
-    }}
-  >
-    {ui}
-  </ApplicationContext.Provider>
-);
 
 export const wrapWithFinalizeRoundContext = (
   ui: JSX.Element,

@@ -4,6 +4,7 @@ import { datadogLogs } from "@datadog/browser-logs";
 import { datadogRum } from "@datadog/browser-rum";
 import { QuestionMarkCircleIcon } from "@heroicons/react/24/solid";
 import { shallowEqual, useDispatch, useSelector } from "react-redux";
+import { useValidateCredential } from "common";
 import { global } from "../../global";
 // --- Identity tools
 import { RootState } from "../../reducers";
@@ -17,7 +18,6 @@ import {
   VerifiableCredential,
 } from "./identity/credentials";
 import { credentialsSaved } from "../../actions/projectForm";
-import useValidateCredential from "../../hooks/useValidateCredential";
 import VerifiedBadge from "../badges/VerifiedBadge";
 
 function generateUID(length: number) {
@@ -55,15 +55,6 @@ export default function Github({
     props.verifiableCredential,
     props.formMetadata.projectGithub
   );
-
-  // console.log(
-  //   "GITHUB",
-  //   "credential",
-  //   props.verifiableCredential,
-  //   props.formMetadata.projectTwitter,
-  //   "isValid: ",
-  //   validCredential
-  // );
 
   async function handleVerify(): Promise<void> {
     // Fetch data from external API

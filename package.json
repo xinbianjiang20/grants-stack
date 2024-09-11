@@ -28,20 +28,28 @@
     "test:builder": "pnpm test --filter=builder",
     "typecheck:builder": "turbo run typecheck --filter=builder",
     "test:common": "turbo run test --filter=common",
+    "lint:common": "pnpm --filter common run lint",
+    "typecheck:common": "pnpm --filter common run typecheck",
+    "lint:data-layer": "pnpm --filter data-layer run lint",
+    "typecheck:data-layer": "pnpm --filter data-layer run typecheck",
     "test:verify-env": "turbo run test --filter=verify-env",
     "test:data-layer": "turbo run test --filter=data-layer"
   },
   "devDependencies": {
-    "@commitlint/cli": "^17.7.1",
-    "@commitlint/config-conventional": "^17.7.0",
-    "turbo": "^1.11.0"
+    "@commitlint/cli": "^17.8.1",
+    "@commitlint/config-conventional": "^17.8.1",
+    "turbo": "^1.13.3"
   },
   "dependencies": {
-    "prettier": "^3.0.3"
+    "concurrently": "^8.2.2",
+    "prettier": "^3.2.5"
   },
   "pnpm": {
     "overrides": {
       "webpack": "^5"
     }
-  }
+  },
+  "workspaces": [
+    "packages/*"
+  ]
 }

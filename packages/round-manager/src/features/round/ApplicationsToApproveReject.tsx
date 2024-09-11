@@ -30,19 +30,26 @@ import {
   RejectedApplicationsCount,
   Select,
 } from "./BulkApplicationCommon";
-import { useApplicationByRoundId } from "../../context/application/ApplicationContext";
+import { useApplicationsByRoundId } from "../common/useApplicationsByRoundId";
 import { datadogLogs } from "@datadog/browser-logs";
 import { useBulkUpdateGrantApplications } from "../../context/application/BulkUpdateGrantApplicationContext";
 import ProgressModal from "../common/ProgressModal";
 import { errorModalDelayMs } from "../../constants";
 import ErrorModal from "../common/ErrorModal";
-import { renderToPlainText } from "common";
+import { getRoundStrategyType, renderToPlainText, useAllo } from "common";
 import { roundApplicationsToCSV } from "../api/exports";
-import { utils } from "ethers";
-import { useWallet } from "../common/Auth";
+import { useAccount } from "wagmi";
 
-async function exportAndDownloadCSV(roundId: string, chainId: number) {
-  const csv = await roundApplicationsToCSV(roundId, chainId);
+export async function exportAndDownloadCSV(
+  roundId: string,
+  chainId: number,
+  litContractAddress: string
+) {
+  const csv = await roundApplicationsToCSV(
+    roundId,
+    chainId,
+    litContractAddress
+  );
 
   // create a download link and click it
   const outputBlob = new Blob([csv], {
@@ -73,13 +80,14 @@ export default function ApplicationsToApproveReject({
   isDirectRound = false,
 }: Props) {
   const { id } = useParams();
-  const { chain } = useWallet();
+  const { chainId } = useAccount();
+  const allo = useAllo();
 
   if (id === undefined) {
     throw new Error("id is undefined");
   }
 
-  const { applications, isLoading } = useApplicationByRoundId(id);
+  const { data: applications, isLoading } = useApplicationsByRoundId(id);
   const filteredApplications = (applications || []).filter((a) =>
     isDirectRound
       ? a.inReview
@@ -110,7 +118,7 @@ export default function ApplicationsToApproveReject({
     },
     {
       name: "Indexing",
-      description: "The subgraph is indexing the data.",
+      description: "Indexing the data.",
       status: indexingStatus,
     },
     {
@@ -135,6 +143,8 @@ export default function ApplicationsToApproveReject({
             status: application.status,
             applicationIndex: application.applicationIndex,
             createdAt: application.createdAt,
+            anchorAddress: application.anchorAddress,
+            distributionTransaction: application.distributionTransaction,
           };
         })
       );
@@ -180,13 +190,30 @@ export default function ApplicationsToApproveReject({
     try {
       setOpenProgressModal(true);
       setOpenModal(false);
+
+      if (
+        allo === null ||
+        id === undefined ||
+        applications === undefined ||
+        applications[0].payoutStrategy?.strategyName === undefined ||
+        applications[0].payoutStrategy?.id === undefined
+      ) {
+        return;
+      }
+
       await bulkUpdateGrantApplications({
+        allo,
+        roundStrategy: getRoundStrategyType(
+          applications[0].payoutStrategy.strategyName
+        ),
+        roundStrategyAddress: applications[0].payoutStrategy.id,
+        roundId: id,
         // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-        roundId: id!,
-        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-        applications: applications!,
+        applications: applications,
         selectedApplications: selected.filter(
-          (application) => application.status !== "PENDING"
+          (application) =>
+            application.status !== "PENDING" &&
+            application.status !== "IN_REVIEW"
         ),
       });
       setBulkSelect(false);
@@ -198,9 +225,20 @@ export default function ApplicationsToApproveReject({
   };
 
   async function handleExportCsvClick(roundId: string, chainId: number) {
+    if (
+      applications === undefined ||
+      applications[0].payoutStrategy?.id === undefined
+    ) {
+      return;
+    }
+
     try {
       setIsCsvExportLoading(true);
-      await exportAndDownloadCSV(roundId, chainId);
+      await exportAndDownloadCSV(
+        roundId,
+        chainId,
+        roundId.startsWith("0x") ? roundId : applications[0].payoutStrategy.id
+      );
     } catch (e) {
       datadogLogs.logger.error(
         `error: exportApplicationCsv - ${e}, id: ${roundId}`
@@ -214,13 +252,13 @@ export default function ApplicationsToApproveReject({
   return (
     <div>
       <div className="flex items-center mb-4">
-        {id && applications && applications.length > 0 && (
+        {id && applications && applications.length > 0 && chainId && (
           <Button
             type="button"
             $variant="outline"
             className="text-xs px-3 py-1 inline-block"
             disabled={isCsvExportLoading}
-            onClick={() => handleExportCsvClick(utils.getAddress(id), chain.id)}
+            onClick={() => handleExportCsvClick(id, chainId)}
           >
             {isCsvExportLoading ? (
               <>
@@ -289,7 +327,7 @@ export default function ApplicationsToApproveReject({
       </CardsContainer>
       {selected?.filter((obj) => obj.status !== "PENDING").length > 0 && (
         <>
-          <div className="fixed w-full left-0 bottom-0 bg-white">
+          <div className="fixed w-full left-0 bottom-0 bg-white z-20">
             <hr />
             <div className="flex justify-end items-center py-5 pr-20">
               <NumberOfApplicationsSelectedMessage

@@ -1,7 +1,7 @@
-import ListProgramPage from "../ListProgramPage";
 import { screen } from "@testing-library/react";
 import { makeProgramData, renderWithProgramContext } from "../../../test-utils";
 import { ProgressStatus } from "../../api/types";
+import ListProgramPage from "../ProgramListPage";
 
 jest.mock("../../common/Auth", () => ({
   useWallet: () => ({
@@ -10,9 +10,29 @@ jest.mock("../../common/Auth", () => ({
     provider: { getNetwork: () => ({ chainId: "0" }) },
   }),
 }));
-jest.mock("wagmi");
+jest.mock("wagmi", () => ({
+  useAccount: () => ({
+    chainId: 1,
+  }),
+}));
 jest.mock("@rainbow-me/rainbowkit", () => ({
   ConnectButton: jest.fn(),
+  getDefaultConfig: jest.fn(),
+}));
+jest.mock("data-layer", () => ({
+  ...jest.requireActual("data-layer"),
+  useDataLayer: () => ({
+    getProgramsByUser: jest.fn(),
+    fetchRounds: jest.fn(),
+  }),
+  fetchProgramsByAddress: jest.fn(),
+  listPrograms: jest.fn(),
+  type: {
+    RoundCategory: {
+      QuadraticFunding: 0,
+      Direct: 1,
+    },
+  },
 }));
 
 describe("<ListProgramPage />", () => {

@@ -5,22 +5,20 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import CreateProgramPage from "../CreateProgramPage";
-import { useWallet } from "../../common/Auth";
-import { ProgressStatus } from "../../api/types";
-import { saveToIPFS } from "../../api/ipfs";
-import {
-  CreateProgramContext,
-  CreateProgramState,
-  initialCreateProgramState,
-} from "../../../context/program/CreateProgramContext";
+import { AlloOperation, useAllo } from "common";
+import { error } from "common/dist/allo/common";
+import { success } from "common/src/allo/common";
 import { MemoryRouter } from "react-router-dom";
+import { zeroAddress } from "viem";
 import { errorModalDelayMs } from "../../../constants";
+import CreateProgramPage from "../CreateProgramPage";
+import wagmi, { Config, UseAccountReturnType } from "wagmi";
 
 jest.mock("../../api/ipfs");
 jest.mock("../../common/Auth");
 jest.mock("@rainbow-me/rainbowkit", () => ({
   ConnectButton: jest.fn(),
+  getDefaultConfig: jest.fn(),
 }));
 
 jest.mock("../../../constants", () => ({
@@ -28,22 +26,31 @@ jest.mock("../../../constants", () => ({
   errorModalDelayMs: 0, // NB: use smaller delay for faster tests
 }));
 
+jest.mock("data-layer", () => ({
+  ...jest.requireActual("data-layer"),
+  useDataLayer: () => ({
+    getProgramsByUser: jest.fn(),
+  }),
+}));
+
+jest.mock("common", () => ({
+  ...jest.requireActual("common"),
+  useAllo: jest.fn(),
+}));
+
+jest.mock("wagmi", () => ({
+  useAccount: () => ({
+    chainId: 10,
+    address: "0x0000000000000000000000000000000000000000",
+    chain: {
+      id: 10,
+    },
+  }),
+}));
+
 describe("<CreateProgramPage />", () => {
-  let consoleErrorSpy: jest.SpyInstance;
-
   beforeEach(() => {
-    (useWallet as jest.Mock).mockReturnValue({ chain: {} });
-    (saveToIPFS as jest.Mock).mockImplementation(() => {
-      /* do nothing */
-    });
 
-    consoleErrorSpy = jest.spyOn(console, "error").mockImplementation(() => {
-      /* do nothing */
-    });
-  });
-
-  afterEach(() => {
-    consoleErrorSpy.mockClear();
   });
 
   it("shows program chain tooltip", async () => {
@@ -54,15 +61,52 @@ describe("<CreateProgramPage />", () => {
     ).toBeInTheDocument();
   });
 
-  it("displays wrong network when connected to unsupported network", async () => {
+  it("submitting form calls allo interface with correct data", async () => {
+    const createProgram = jest.fn(
+      () =>
+        new AlloOperation(async () => {
+          return success({ programId: "1" });
+        })
+    );
+
+    (useAllo as jest.Mock).mockReturnValue({
+      createProgram,
+    });
+
     renderWithContext(<CreateProgramPage />);
 
-    expect(await screen.findByText("Wrong Network")).toBeInTheDocument();
+    const save = screen.getByTestId("save");
+    const programName = screen.getByTestId("program-name");
+
+    act(() => {
+      fireEvent.change(programName, { target: { value: "Program A" } });
+      fireEvent.click(save);
+    });
+
+    await waitFor(() => {
+      expect(createProgram).toHaveBeenCalledWith({
+        name: "Program A",
+        memberAddresses: [zeroAddress],
+      });
+    });
   });
 
-  it("shows error modal when saving application meta data fails", async () => {
-    renderWithContext(<CreateProgramPage />, {
-      IPFSCurrentStatus: ProgressStatus.IS_ERROR,
+  it("shows error modal when saving metadata fails", async () => {
+    (useAllo as jest.Mock).mockReturnValue({
+      createProgram: () =>
+        new AlloOperation(async ({ emit }) => {
+          emit("ipfs", error(new Error("Save to IPFS failed :(")));
+        }),
+    });
+
+    renderWithContext(<CreateProgramPage />);
+
+    const save = screen.getByTestId("save");
+    const programName = screen.getByTestId("program-name");
+
+    act(() => {
+      fireEvent.change(programName, { target: { value: "Program A" } });
+      fireEvent.click(save);
     });
 
     await waitFor(
@@ -72,74 +116,56 @@ describe("<CreateProgramPage />", () => {
     );
   });
 
-  it("choosing done closes the error modal", async () => {
-    renderWithContext(<CreateProgramPage />, {
-      IPFSCurrentStatus: ProgressStatus.IS_ERROR,
+  it("pressing done closes error modal", async () => {
+    (useAllo as jest.Mock).mockReturnValue({
+      createProgram: () =>
+        new AlloOperation(async ({ emit }) => {
+          emit("ipfs", error(new Error("Save to IPFS failed :(")));
+        }),
     });
 
+    renderWithContext(<CreateProgramPage />);
+
+    const save = screen.getByTestId("save");
+    const programName = screen.getByTestId("program-name");
+
+    act(() => {
+      fireEvent.change(programName, { target: { value: "Program A" } });
+      fireEvent.click(save);
+    });
+
+    await waitFor(
+      async () =>
+        expect(await screen.findByTestId("error-modal")).toBeInTheDocument(),
+      { timeout: errorModalDelayMs + 1000 }
+    );
+
     const done = await screen.findByTestId("done");
-    await act(() => {
+
+    act(() => {
       fireEvent.click(done);
     });
 
     expect(screen.queryByTestId("error-modal")).not.toBeInTheDocument();
   });
 
-  it("choosing try again restarts the action and closes the error modal", async () => {
-    const saveToIPFSStub = saveToIPFS as jest.Mock;
-    saveToIPFSStub.mockRejectedValue(new Error("Save to IPFS failed :("));
+  it("displays wrong network when connected to unsupported network", async () => {
+    jest.spyOn(wagmi, "useAccount").mockImplementation(
+      () =>
+        ({
+          chainId: 9999,
+          address: "0x0000000000000000000000000000000000000000",
+          chain: {
+            id: 9999,
+          },
+        }) as unknown as UseAccountReturnType<Config>
+    );
 
-    renderWithContext(<CreateProgramPage />, {
-      IPFSCurrentStatus: ProgressStatus.IS_ERROR,
-    });
-    const save = screen.getByTestId("save");
-    const programName = screen.getByTestId("program-name");
-    await act(() => {
-      fireEvent.change(programName, { target: { value: "Program A" } });
-      fireEvent.click(save);
-    });
+    renderWithContext(<CreateProgramPage />);
 
-    const saveToIpfsCalls = saveToIPFSStub.mock.calls.length;
-    expect(saveToIpfsCalls).toEqual(1);
-
-    const tryAgain = await screen.findByTestId("tryAgain");
-    await act(() => {
-      fireEvent.click(tryAgain);
-    });
-
-    expect(screen.queryByTestId("error-modal")).not.toBeInTheDocument();
-    expect(saveToIPFSStub.mock.calls.length).toEqual(saveToIpfsCalls + 1);
-  });
-
-  describe("when saving application metadata succeeds but create program transaction fails", () => {
-    it("shows error modal when program contract deployment fails", async () => {
-      renderWithContext(<CreateProgramPage />, {
-        contractDeploymentStatus: ProgressStatus.IS_ERROR,
-      });
-      await waitFor(
-        async () =>
-          expect(await screen.findByTestId("error-modal")).toBeInTheDocument(),
-        { timeout: errorModalDelayMs + 1000 }
-      );
-    });
+    expect(await screen.findByText("Wrong Network")).toBeInTheDocument();
   });
 });
 
-export const renderWithContext = (
-  ui: JSX.Element,
-  programStateOverrides: Partial<CreateProgramState> = {},
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  dispatch: any = jest.fn()
-) =>
-  render(
-    <MemoryRouter>
-      <CreateProgramContext.Provider
-        value={{
-          state: { ...initialCreateProgramState, ...programStateOverrides },
-          dispatch,
-        }}
-      >
-        {ui}
-      </CreateProgramContext.Provider>
-    </MemoryRouter>
-  );
+export const renderWithContext = (ui: JSX.Element) =>
+  render(<MemoryRouter>{ui}</MemoryRouter>);

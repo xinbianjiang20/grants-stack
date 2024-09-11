@@ -1,7 +1,7 @@
 import { datadogRum } from "@datadog/browser-rum";
 import { useEffect, useRef, useState } from "react";
 import { shallowEqual, useDispatch, useSelector } from "react-redux";
-import { useNetwork } from "wagmi";
+import { useConfig } from "wagmi";
 import { ValidationError } from "yup";
 import { metadataImageSaved, metadataSaved } from "../../actions/projectForm";
 import { RootState } from "../../reducers";
@@ -42,7 +42,7 @@ function ProjectForm({
   const [feedback, setFeedback] = useState([
     { title: "", type: "none", message: "" },
   ]);
-  const { chains } = useNetwork();
+  const { chains } = useConfig();
 
   const [, setLogoImg] = useState<Blob | undefined>();
   const [, setBannerImg] = useState<Blob | undefined>();
@@ -66,10 +66,16 @@ function ProjectForm({
     setBannerImg(banner);
     dispatch(metadataImageSaved(banner, "bannerImgData"));
   };
-
   const validate = async () => {
     try {
-      await validateProjectForm(props.formMetaData);
+      await validateProjectForm({
+        ...props.formMetaData,
+        // When editing, the website is already prefixed with https://
+        website: `https://${props.formMetaData.website?.replace(
+          "https://",
+          ""
+        )}`,
+      });
       setFormValidation({
         messages: [],
         valid: true,
@@ -121,6 +127,15 @@ function ProjectForm({
     setSubmitted(true);
     const valid = await validate();
     if (valid) {
+      dispatch(
+        metadataSaved({
+          ...props.formMetaData,
+          website: `https://${props.formMetaData.website?.replace(
+            "https://",
+            ""
+          )}`,
+        })
+      );
       setVerifying(ProjectFormStatus.Verification);
     }
   };

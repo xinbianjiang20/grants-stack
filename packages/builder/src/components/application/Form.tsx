@@ -1,20 +1,29 @@
 import { Stack } from "@chakra-ui/react";
 import { datadogRum } from "@datadog/browser-rum";
+import { getConfig } from "common/src/config";
 import { ExclamationCircleIcon } from "@heroicons/react/20/solid";
 import {
   ExclamationTriangleIcon,
   InformationCircleIcon,
 } from "@heroicons/react/24/solid";
+import {
+  ProjectApplicationWithRound,
+  RoundCategory,
+  useDataLayer,
+} from "data-layer";
+import {
+  RoundApplicationAnswers,
+  RoundApplicationMetadata,
+} from "data-layer/dist/roundApplication.types";
+import { getChainById, useValidateCredential } from "common";
 import { Fragment, useEffect, useState } from "react";
 import { shallowEqual, useDispatch, useSelector } from "react-redux";
 import { Link } from "react-router-dom";
-import { useNetwork } from "wagmi";
+import { useChains } from "wagmi";
 import { ValidationError } from "yup";
-import { fetchProjectApplicationInRound } from "../../actions/projects";
 import { resetApplicationError } from "../../actions/roundApplication";
-import useValidateCredential from "../../hooks/useValidateCredential";
 import { RootState } from "../../reducers";
-import { editProjectPathByID } from "../../routes";
+import { editPath } from "../../routes";
 import {
   AddressType,
   ChangeHandlers,
@@ -22,15 +31,6 @@ import {
   ProjectOption,
   Round,
 } from "../../types";
-import {
-  RoundApplicationAnswers,
-  RoundApplicationMetadata,
-} from "../../types/roundApplication";
-import {
-  ROUND_PAYOUT_DIRECT,
-  getProjectURIComponents,
-} from "../../utils/utils";
-import { getNetworkIcon, networkPrettyName } from "../../utils/wallet";
 import Button, { ButtonVariants } from "../base/Button";
 import CallbackModal from "../base/CallbackModal";
 import ErrorModal from "../base/ErrorModal";
@@ -69,18 +69,25 @@ export default function Form({
   showErrorModal,
   readOnly,
   publishedApplication,
+  setCreateLinkedProject,
 }: {
   roundApplication: RoundApplicationMetadata;
   round: Round;
-  onSubmit?: (answers: RoundApplicationAnswers) => void;
+  onSubmit?: (answers: RoundApplicationAnswers, createProfile: boolean) => void;
   onChange?: (answers: RoundApplicationAnswers) => void;
   showErrorModal: boolean;
   readOnly?: boolean;
   publishedApplication?: any;
+  setCreateLinkedProject: (createLinkedProject: boolean) => void;
 }) {
   const dispatch = useDispatch();
-  const { chains } = useNetwork();
+  const dataLayer = useDataLayer();
+  const chains = useChains();
+  const { version } = getConfig().allo;
 
+  const [projectApplications, setProjectApplications] = useState<
+    ProjectApplicationWithRound[]
+  >([]);
   const [isLoading, setIsLoading] = useState(false);
   const [infoModal, setInfoModal] = useState(false);
   const [answers, setAnswers] = useState<RoundApplicationAnswers>({});
@@ -104,18 +111,42 @@ export default function Form({
     const allProjectMetadata = state.grantsMetadata;
     const { chainID } = state.web3;
 
+    const projectIds = Object.keys(allProjectMetadata);
+
     return {
-      projectIDs: state.projects.ids,
+      anchors: state.projects.anchor,
+      projectIDs: projectIds,
       allProjectMetadata,
       chainID,
     };
   }, shallowEqual);
 
+  async function loadApplications() {
+    const applications = await dataLayer.getApplicationsByRoundIdAndProjectIds({
+      chainId: props.chainID as number,
+      roundId: round.id.toLowerCase() as `0x${Lowercase<string>}`,
+      projectIds: props.projectIDs,
+    });
+    if (applications) {
+      setProjectApplications(applications);
+    }
+  }
+
+  useEffect(() => {
+    loadApplications();
+  }, []);
+
   let selectedProjectMetadata: Metadata | undefined;
+  let createLinkedProject = false;
 
   if (selectedProjectID !== undefined && selectedProjectID !== "") {
     selectedProjectMetadata =
       props.allProjectMetadata[selectedProjectID]?.metadata;
+    createLinkedProject =
+      Number(selectedProjectMetadata!.chainId) !== Number(props.chainID) &&
+      (!selectedProjectMetadata!.linkedChains ||
+        !selectedProjectMetadata!.linkedChains.includes(Number(props.chainID)));
+    setCreateLinkedProject(createLinkedProject);
   }
 
   const twitterCredentialValidation = useValidateCredential(
@@ -132,7 +163,7 @@ export default function Form({
   const schema = roundApplication.applicationSchema;
 
   useEffect(() => {
-    if (publishedApplication === undefined) {
+    if (publishedApplication === undefined || showErrorModal) {
       return;
     }
 
@@ -223,21 +254,21 @@ export default function Form({
     const { value: projectId } = e.target;
     setSelectedProjectID(projectId);
     setIsLoading(true);
-    // don't load the project if the input is empty/blank
+
     if (projectId === "") {
       setHasExistingApplication(false);
       setIsLoading(false);
       handleInput(e);
       return;
     }
-    const { hasProjectAppliedToRound } = await fetchProjectApplicationInRound(
-      projectId,
-      round.address,
-      // assume the chainID is set and we are on the same chain
-      // as the round we are applying for
-      props.chainID!
-    );
-    setHasExistingApplication(hasProjectAppliedToRound);
+
+    const hasProjectAppliedToRound =
+      projectApplications.filter((app) => app.projectId === projectId).length >
+      0;
+
+    if (version === "allo-v2") {
+      setHasExistingApplication(hasProjectAppliedToRound);
+    }
     setIsLoading(false);
     handleInput(e);
   };
@@ -261,7 +292,7 @@ export default function Form({
   };
 
   const closeErrorModal = async () => {
-    dispatch(resetApplicationError(round.address));
+    dispatch(resetApplicationError(round.id));
   };
 
   const handleSubmitApplicationRetry = async () => {
@@ -271,15 +302,18 @@ export default function Form({
 
   useEffect(() => {
     const currentOptions = props.projectIDs.map((id): ProjectOption => {
-      const { chainId } = getProjectURIComponents(id);
-      const projectChainIconUri = getNetworkIcon(Number(chainId));
-      const chainName = networkPrettyName(Number(chainId));
+      const chainId = props.allProjectMetadata[id]!.metadata!.chainId!;
+
+      const chain = getChainById(chainId);
+      const chainName = chain.prettyName;
+      const { icon } = chain;
+
       return {
         id,
         title: props.allProjectMetadata[id]?.metadata?.title,
         chainInfo: {
           chainId: Number(chainId),
-          icon: projectChainIconUri,
+          icon,
           chainName,
         },
       };
@@ -329,7 +363,7 @@ export default function Form({
 
   const isDirectRound =
     round.payoutStrategy !== null &&
-    round.payoutStrategy === ROUND_PAYOUT_DIRECT;
+    round.payoutStrategy === RoundCategory.Direct;
   // todo: ensure that the applications are made by a project owner
   const isValidProjectSelected =
     (isDirectRound || !hasExistingApplication) &&
@@ -359,7 +393,7 @@ export default function Form({
         }`}
       >
         <form onSubmit={(e) => e.preventDefault()}>
-          {schema.questions.map((input) => {
+          {schema.questions.map((input: any) => {
             if (
               needsProject &&
               input.type !== "project" &&
@@ -619,7 +653,7 @@ export default function Form({
                         }
                         name={`${input.id}`}
                         value={answers[input.id] as string}
-                        options={input.options.map((o) => ({
+                        options={input.options.map((o: any) => ({
                           id: o,
                           title: o,
                         }))}
@@ -760,7 +794,13 @@ export default function Form({
                       <Link
                         className="text-link"
                         target="_blank"
-                        to={editProjectPathByID(selectedProjectID)!}
+                        to={
+                          editPath(
+                            selectedProjectMetadata?.chainId.toString()!,
+                            selectedProjectMetadata?.registryAddress!,
+                            selectedProjectID
+                          )!
+                        }
                       >
                         here
                       </Link>{" "}
@@ -848,7 +888,7 @@ export default function Form({
           open={showErrorModal}
           onClose={closeErrorModal}
           onRetry={handleSubmitApplicationRetry}
-          title="Round Application Period Closed"
+          title="Round Application Error"
         >
           {round.applicationsEndTime < now ? (
             <div className="my-2">
@@ -865,7 +905,7 @@ export default function Form({
           confirmText="Proceed"
           cancelText="Cancel"
           confirmHandler={() => {
-            if (onSubmit) onSubmit(answers);
+            if (onSubmit) onSubmit(answers, createLinkedProject);
             setInfoModal(false);
           }}
           toggleModal={() => setInfoModal(!infoModal)}

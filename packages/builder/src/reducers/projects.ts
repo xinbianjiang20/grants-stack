@@ -1,10 +1,11 @@
-import { ChainId } from "common";
+import { ProjectApplicationWithRound, ProjectEventsMap } from "data-layer";
+
 import {
-  ProjectsActions,
   PROJECTS_ERROR,
   PROJECTS_LOADED,
   PROJECTS_LOADING,
   PROJECTS_UNLOADED,
+  PROJECT_ANCHORS_LOADED,
   PROJECT_APPLICATIONS_ERROR,
   PROJECT_APPLICATIONS_LOADED,
   PROJECT_APPLICATIONS_LOADING,
@@ -12,8 +13,8 @@ import {
   PROJECT_OWNERS_LOADED,
   PROJECT_STATS_LOADED,
   PROJECT_STATS_LOADING,
+  ProjectsActions,
 } from "../actions/projects";
-import { ProjectEventsMap } from "../types";
 
 export enum Status {
   Undefined = 0,
@@ -22,27 +23,7 @@ export enum Status {
   Error,
 }
 
-export type AppStatus =
-  | "PENDING"
-  | "APPROVED"
-  | "REJECTED"
-  | "APPEAL"
-  | "FRAUD"
-  | "RECEIVED";
-
-export type Application = {
-  roundID: string;
-  status: AppStatus;
-  inReview: boolean;
-  chainId: ChainId;
-  metaPtr?: {
-    protocol: string;
-    pointer: string;
-  };
-};
-
 export type ProjectOwners = { [projectID: string]: string[] };
-
 export interface ProjectsState {
   status: Status;
   loadingChains: number[];
@@ -50,8 +31,9 @@ export interface ProjectsState {
   ids: string[];
   events: ProjectEventsMap;
   owners: ProjectOwners;
-  applications: {
-    [projectID: string]: Application[];
+  anchor?: { [anchor: string]: string };
+  applications?: {
+    [projectID: string]: ProjectApplicationWithRound[];
   };
   stats: {
     [projectID: string]: ProjectStats[];
@@ -65,6 +47,7 @@ export const initialState: ProjectsState = {
   ids: [],
   owners: {},
   events: {},
+  anchor: {},
   applications: {},
   stats: {},
 };
@@ -87,8 +70,7 @@ export const projectsReducer = (
       return {
         ...state,
         status: Status.Loading,
-        loadingChains: [...state.loadingChains, action.payload],
-        ids: [],
+        loadingChains: [...state.loadingChains, ...action.payload],
       };
     }
 
@@ -103,16 +85,10 @@ export const projectsReducer = (
     }
 
     case PROJECTS_LOADED: {
-      const { chainID, events } = action.payload;
-      const ids = Object.keys(events);
-      const loadingChains = state.loadingChains.filter((id) => id !== chainID);
-
       return {
         ...state,
-        status: loadingChains.length === 0 ? Status.Loaded : state.status,
-        ids: [...state.ids, ...ids],
-        events: { ...state.events, ...events },
-        loadingChains,
+        status: Status.Loaded,
+        loadingChains: [],
       };
     }
 
@@ -136,7 +112,7 @@ export const projectsReducer = (
     case PROJECT_APPLICATIONS_LOADING: {
       // Remove the project applications key
       const { [action.projectID]: projectApplications, ...applications } =
-        state.applications;
+        state.applications || {};
 
       return {
         ...state,
@@ -156,9 +132,9 @@ export const projectsReducer = (
     }
 
     case PROJECT_APPLICATION_UPDATED: {
-      const projectApplications = state.applications[action.projectID] || [];
+      const projectApplications = state.applications?.[action.projectID] || [];
       const index = projectApplications.findIndex(
-        (app: Application) => app.roundID === action.roundID
+        (app: ProjectApplicationWithRound) => app.roundId === action.roundID
       );
 
       if (index < 0) {
@@ -210,6 +186,16 @@ export const projectsReducer = (
       return {
         ...state,
         error: action.error,
+      };
+    }
+
+    case PROJECT_ANCHORS_LOADED: {
+      return {
+        ...state,
+        anchor: {
+          ...state.anchor,
+          [action.payload.projectID]: action.payload.anchor,
+        },
       };
     }
 

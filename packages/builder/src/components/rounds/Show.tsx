@@ -1,32 +1,35 @@
 /* eslint-disable no-nested-ternary */
+import { getChainById } from "common";
+import { RoundCategory, useDataLayer } from "data-layer";
 import { useEffect, useState } from "react";
 import { shallowEqual, useDispatch, useSelector } from "react-redux";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { useSwitchNetwork } from "wagmi";
-import { ChainId } from "common";
+import { useSwitchChain } from "wagmi";
+import { useAlloVersion } from "common/src/components/AlloVersionSwitcher";
+import { getTimezoneName } from "common/src/index";
+import { AlloVersion } from "data-layer/dist/data-layer.types";
 import { loadAllChainsProjects } from "../../actions/projects";
 import { loadRound, unloadRounds } from "../../actions/rounds";
 import useLocalStorage from "../../hooks/useLocalStorage";
 import { RootState } from "../../reducers";
-import { Round } from "../../types";
+import { GrantsMetadataState } from "../../reducers/grantsMetadata";
 import { Status as ProjectStatus } from "../../reducers/projects";
 import { ApplicationModalStatus } from "../../reducers/roundApplication";
 import { Status } from "../../reducers/rounds";
 import { grantsPath, newGrantPath, roundApplicationPath } from "../../routes";
-import { formatTimeUTC, isInfinite } from "../../utils/components";
-import { networkPrettyName } from "../../utils/wallet";
+import { Round } from "../../types";
+import { formatTimeLocal, isInfinite } from "../../utils/components";
 import Button, { ButtonVariants } from "../base/Button";
 import ErrorModal from "../base/ErrorModal";
 import LoadingSpinner from "../base/LoadingSpinner";
 import SwitchNetworkModal from "../base/SwitchNetworkModal";
-import { GrantsMetadataState } from "../../reducers/grantsMetadata";
 
 interface ApplyButtonProps {
   round: Round;
   applicationsHaveStarted: boolean;
   applicationsHaveEnded: boolean;
   projects: GrantsMetadataState;
-  chainId: ChainId;
+  chainId: number;
   roundId: string | undefined;
 }
 
@@ -79,7 +82,9 @@ function ApplyButton(props: ApplyButtonProps) {
         </Button>
         <div className="text-center flex flex-1 flex-col mt-6 text-secondary-text">
           <span>The application period for this round will start on</span>
-          <span>{formatTimeUTC(round.applicationsStartTime)}</span>
+          <span>
+            {formatTimeLocal(round.applicationsStartTime)} {getTimezoneName()}
+          </span>
         </div>
       </>
     );
@@ -116,11 +121,13 @@ function ApplyButton(props: ApplyButtonProps) {
 
 function ShowRound() {
   const [roundData, setRoundData] = useState<any>();
+  const dataLayer = useDataLayer();
+  const { version: alloVersion, switchToVersion } = useAlloVersion();
 
   const params = useParams();
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  const { switchNetwork } = useSwitchNetwork();
+  const { switchChain } = useSwitchChain();
 
   const { roundId, chainId } = params;
 
@@ -134,14 +141,23 @@ function ShowRound() {
     const web3ChainId = state.web3.chainID;
     const roundChainId = Number(chainId);
 
-    const now = Math.trunc(Date.now() / 1000);
+    const now = new Date().getTime() / 1000;
 
     let applicationsHaveStarted = false;
     let applicationsHaveEnded = false;
     let votingHasStarted = false;
     let votingHasEnded = false;
 
-    // covers QF and DF application and voting periods condition evaluation
+    const isDirectRound: boolean =
+      roundState?.round?.payoutStrategy === RoundCategory.Direct;
+
+    const roundStartTime = isDirectRound
+      ? roundState?.round?.applicationsStartTime
+      : roundState?.round?.roundStartTime;
+    const roundEndTime = isDirectRound
+      ? roundState?.round?.applicationsEndTime
+      : roundState?.round?.roundEndTime;
+
     if (
       roundState?.round &&
       roundState?.round?.applicationsStartTime !== undefined &&
@@ -172,29 +188,43 @@ function ShowRound() {
       applicationsHaveEnded,
       votingHasStarted,
       votingHasEnded,
+      isDirectRound,
+      roundStartTime,
+      roundEndTime,
     };
   }, shallowEqual);
 
   const renderApplicationDate = () =>
     roundData && (
       <>
-        {formatTimeUTC(roundData.applicationsStartTime)} -{" "}
-        {isInfinite(roundData.applicationsEndTime)
+        {formatTimeLocal(roundData.applicationsStartTime)} {getTimezoneName()} -{" "}
+        {isInfinite(roundData.applicationsEndTime) ||
+        !roundData.applicationsEndTime
           ? "No End Date"
-          : formatTimeUTC(roundData.applicationsEndTime)}
+          : formatTimeLocal(roundData.applicationsEndTime)}{" "}
+        {getTimezoneName()}
       </>
     );
 
   const renderRoundDate = () =>
-    roundData && (
+    roundData &&
+    (props.isDirectRound ? (
       <>
-        {formatTimeUTC(roundData.roundStartTime)} -{" "}
-        {isInfinite(roundData.roundEndTime)
+        {formatTimeLocal(props.roundStartTime as number)} {getTimezoneName()} -{" "}
+        {isInfinite(props.roundEndTime as number) || !props.roundEndTime
           ? "No End Date"
-          : formatTimeUTC(roundData.roundEndTime)}
-        {}
+          : formatTimeLocal(props.roundEndTime)}{" "}
+        {getTimezoneName()}
       </>
-    );
+    ) : (
+      <>
+        {formatTimeLocal(Number(props.roundStartTime))} {getTimezoneName()} -{" "}
+        {isInfinite(Number(props.roundEndTime)) || !props.roundEndTime
+          ? "No End Date"
+          : formatTimeLocal(props.roundEndTime)}{" "}
+        {getTimezoneName()}
+      </>
+    ));
 
   const [, setRoundToApply] = useLocalStorage("roundToApply", null);
   const [roundApplicationModal, setToggleRoundApplicationModal] =
@@ -221,7 +251,11 @@ function ShowRound() {
     if (roundId !== undefined) {
       dispatch(unloadRounds());
       dispatch(
-        loadRound(roundId, Number(props.roundChainId || props.web3ChainId))
+        loadRound(
+          roundId,
+          dataLayer,
+          Number(props.roundChainId || props.web3ChainId)
+        )
       );
     }
   }, [dispatch, roundId]);
@@ -229,31 +263,37 @@ function ShowRound() {
   useEffect(() => {
     if (props.round) {
       setRoundData(props.round);
+
+      if (!props.round.tags.includes(alloVersion)) {
+        const roundVersion = props.round.tags.find((tag: string) =>
+          tag.startsWith("allo-")
+        );
+        if (roundVersion === undefined) {
+          throw new Error("no allo version found, should never happen");
+        }
+        switchToVersion(roundVersion as AlloVersion);
+      }
     }
   }, [props.round]);
 
   useEffect(() => {
     if (props.projectsStatus === ProjectStatus.Undefined) {
-      dispatch(loadAllChainsProjects(true));
+      dispatch(loadAllChainsProjects(dataLayer, true));
     }
   }, [props.projectsStatus, dispatch]);
 
   const onSwitchNetwork = () => {
-    if (switchNetwork) {
-      switchNetwork(props.roundChainId);
+    if (switchChain) {
+      switchChain({ chainId: props.roundChainId });
     }
   };
 
-  const renderNetworkChangeModal = () => {
-    const roundNetworkName = networkPrettyName(props.roundChainId);
-    return (
-      // eslint-disable-next-line
-      <SwitchNetworkModal
-        networkName={roundNetworkName}
-        onSwitchNetwork={onSwitchNetwork}
-      />
-    );
-  };
+  const renderNetworkChangeModal = () => (
+    <SwitchNetworkModal
+      networkName={getChainById(props.roundChainId).prettyName}
+      onSwitchNetwork={onSwitchNetwork}
+    />
+  );
 
   if (props.status === Status.Error) {
     return (
@@ -322,7 +362,6 @@ function ShowRound() {
       </div>
     );
   }
-  const isDirectRound = props.round?.payoutStrategy === "DIRECT";
 
   return (
     <div
@@ -337,35 +376,29 @@ function ShowRound() {
           {roundData?.roundMetadata.name}
         </h2>
         <div className="flex flex-col mt-3 mb-8 text-secondary-text">
-          {/* <div className="flex flex-1 flex-col mt-12">
-                <span>Matching Funds Available:</span>
-                <span>$XXX,XXX</span>
-              </div> */}
           <div className="flex flex-1 flex-col mt-8">
             <span>{roundData?.roundMetadata.eligibility?.description}</span>
           </div>
-          {!isDirectRound && (
+          <div className="flex flex-1 flex-col mt-8">
+            <span className="mb-2">Application Period:</span>
+            <span>{renderApplicationDate()}</span>
+          </div>
+          {!props.isDirectRound && (
             <div className="flex flex-1 flex-col mt-8">
-              <span>Application Period:</span>
-              <span>{renderApplicationDate()}</span>
+              <span className="mb-2">Round Dates:</span>
+              <span>{renderRoundDate()}</span>
             </div>
           )}
           <div className="flex flex-1 flex-col mt-8">
-            <span>Round Dates:</span>
-            <span>{renderRoundDate()}</span>
-          </div>
-          <div className="flex flex-1 flex-col mt-8">
-            <span>Eligibility Requirements:</span>
-            <span>
-              {roundData?.roundMetadata?.eligibility?.requirements.map(
-                (r: { requirement: string }, index: number) => (
-                  <>
-                    {`${index + 1}. ${r.requirement}`}
-                    <br />
-                  </>
-                )
-              )}
-            </span>
+            <span className="mb-2">Eligibility Requirements:</span>
+            {roundData?.roundMetadata?.eligibility?.requirements.map(
+              (r: { requirement: string }, index: number) => (
+                <span className="mb-2" key={`${index + 1}. ${r.requirement}`}>
+                  {`${index + 1}. ${r.requirement}`}
+                  <br />
+                </span>
+              )
+            )}
           </div>
         </div>
         <div className="flex flex-1 flex-col mt-8">

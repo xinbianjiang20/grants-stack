@@ -4,16 +4,18 @@ import { render } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { ChakraProvider } from "@chakra-ui/react";
 import {
+  initialRoundState,
   RoundContext,
   RoundState,
-  initialRoundState,
 } from "./context/RoundContext";
-import { __deprecated_RoundMetadata } from "./features/api/round";
-import { __deprecated_RoundOverview } from "./features/api/rounds";
 import { CartProject, ProjectMetadata, Round } from "./features/api/types";
-import { parseUnits } from "viem";
-import { ChainId } from "common";
-import { DataLayer, DataLayerProvider } from "data-layer";
+import { parseUnits, zeroAddress } from "viem";
+import {
+  DataLayer,
+  DataLayerProvider,
+  RoundGetRound,
+  RoundMetadata,
+} from "data-layer";
 
 export const makeRoundData = (overrides: Partial<Round> = {}): Round => {
   const applicationsStartTime = faker.date.soon();
@@ -44,7 +46,7 @@ export const makeRoundData = (overrides: Partial<Round> = {}): Round => {
         matchingCapAmount: 0,
         minDonationThreshold: false,
         minDonationThresholdAmount: 0,
-        sybilDefense: true,
+        sybilDefense: "passport-mbds",
       },
     },
     store: {
@@ -58,7 +60,8 @@ export const makeRoundData = (overrides: Partial<Round> = {}): Round => {
     token: faker.finance.ethereumAddress(),
     payoutStrategy: {
       id: "some-id",
-      strategyName: "MERKLE",
+      strategyName:
+        "allov2.DonationVotingMerkleDistributionDirectTransferStrategy",
     },
     votingStrategy: faker.finance.ethereumAddress(),
     ownedBy: faker.finance.ethereumAddress(),
@@ -85,12 +88,14 @@ export const makeApprovedProjectData = (
       projectGithub: faker.internet.userName(),
       userGithub: faker.internet.userName(),
       owners: [{ address: faker.finance.ethereumAddress() }],
+      lastUpdated: 0,
+      credentials: {},
       ...projectMetadataOverrides,
     },
     status: "APPROVED",
     applicationIndex: faker.datatype.number(),
     roundId: faker.finance.ethereumAddress(),
-    chainId: ChainId.MAINNET,
+    chainId: 1,
     ...overrides,
   };
 };
@@ -99,8 +104,8 @@ const makeTimestamp = (days?: number) =>
   Math.floor(Number(faker.date.soon(days)) / 1000).toString();
 
 export const makeRoundMetadata = (
-  overrides?: Partial<__deprecated_RoundMetadata>
-): __deprecated_RoundMetadata => ({
+  overrides?: Partial<RoundMetadata>
+): RoundMetadata => ({
   name: faker.company.name(),
   roundType: "public",
   eligibility: {
@@ -115,33 +120,28 @@ export const makeRoundMetadata = (
 });
 
 export const makeRoundOverviewData = (
-  overrides?: Partial<__deprecated_RoundOverview>,
-  roundMetadataOverrides?: Partial<__deprecated_RoundMetadata>
-): __deprecated_RoundOverview => {
+  overrides?: Partial<RoundGetRound>,
+  roundMetadataOverrides?: Partial<RoundMetadata>
+): RoundGetRound => {
   return {
     id: faker.finance.ethereumAddress(),
-    chainId: ChainId.MAINNET,
-    createdAt: makeTimestamp(),
-    roundMetaPtr: {
-      protocol: 1,
-      pointer: generateIpfsCid(),
-    },
-    applicationMetaPtr: {
-      protocol: 1,
-      pointer: generateIpfsCid(),
-    },
+    chainId: 1,
+    createdAtBlock: 1,
+    roundMetadataCid: generateIpfsCid(),
     applicationsStartTime: makeTimestamp(),
     applicationsEndTime: makeTimestamp(10),
-    roundStartTime: makeTimestamp(20),
-    roundEndTime: makeTimestamp(30),
+    donationsStartTime: makeTimestamp(20),
+    donationsEndTime: makeTimestamp(30),
+    matchAmountInUsd: 1000000000000000000000000,
     matchAmount: "1000000000000000000000000",
-    token: faker.finance.ethereumAddress(),
+    matchTokenAddress: zeroAddress,
     roundMetadata: makeRoundMetadata(roundMetadataOverrides),
-    projects: Array.from({ length: 2 }).map((_, i) => ({ id: String(i) })),
-    payoutStrategy: {
-      id: "someid",
-      strategyName: "MERKLE",
-    },
+    applications: Array.from({ length: 2 }).map((_, i) => ({ id: String(i) })),
+    strategyName:
+      "allov2.DonationVotingMerkleDistributionDirectTransferStrategy",
+    strategyAddress: faker.finance.ethereumAddress(),
+    strategyId: "",
+    tags: [],
     ...overrides,
   };
 };
@@ -151,7 +151,7 @@ export function generateIpfsCid() {
 }
 
 export const renderWithContext = (
-  ui: JSX.Element,
+  ui: React.ReactNode,
   overrides?: {
     dispatch?: () => void;
     dataLayer?: DataLayer;
@@ -162,13 +162,53 @@ export const renderWithContext = (
   const dataLayerMock =
     overrides?.dataLayer ??
     ({
-      query: vi.fn().mockResolvedValue({
-        round:
-          overrides?.roundState?.rounds !== undefined &&
-          overrides?.roundState?.rounds.length > 0
-            ? overrides?.roundState?.rounds[0]
-            : undefined,
-      }),
+      getSearchBasedProjectCategories: vi.fn().mockResolvedValue([
+        {
+          id: "open-source",
+          name: "Open source",
+          images: [
+            "/assets/categories/category_01.jpg",
+            "/assets/categories/category_02.jpg",
+            "/assets/categories/category_03.jpg",
+            "/assets/categories/category_04.jpg",
+          ],
+          searchQuery: "open source, open source software",
+        },
+      ]),
+      getProjectCollections: vi.fn().mockResolvedValue([
+        {
+          id: "first-time-grantees",
+          author: "Gitcoin",
+          name: "First Time Grantees",
+          images: [
+            "/assets/collections/collection_01.jpg",
+            "/assets/collections/collection_02.jpg",
+            "/assets/collections/collection_03.jpg",
+            "/assets/collections/collection_04.jpg",
+          ],
+          description:
+            "This collection showcases all grantees in GG19 that have not participated in a past round on Grants Stack! Give these first-time grantees some love (and maybe some donations, too!).",
+          applicationRefs: [
+            "10:0x36f548e082b09b0cec5b3f5a7b78953c75de5e74:2",
+            "10:0x36f548e082b09b0cec5b3f5a7b78953c75de5e74:8",
+          ],
+        },
+        {
+          id: "grants-stack-veterans",
+          author: "Gitcoin",
+          name: "Grants Stack Veterans",
+          images: [
+            "/assets/collections/collection_05.jpg",
+            "/assets/collections/collection_06.jpg",
+          ],
+          description:
+            "This collection showcases all grantees in GG19 that have participated in a past GG18 and/or Beta Round! Give these Grants Stack Veterans some love (and maybe some donations, too!).",
+          applicationRefs: [
+            "10:0x36f548e082b09b0cec5b3f5a7b78953c75de5e74:1",
+            "10:0x4727e3265706c59dbc31e7c518960f4f843bb4da:16",
+          ],
+        },
+      ]),
     } as unknown as Mocked<DataLayer>);
 
   return render(

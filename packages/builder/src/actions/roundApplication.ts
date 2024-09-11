@@ -1,22 +1,20 @@
 import { datadogLogs } from "@datadog/browser-logs";
 import { datadogRum } from "@datadog/browser-rum";
-import { ChainId, isJestRunning } from "common";
+import { Allo, AnyJson, isJestRunning } from "common";
+import { getConfig } from "common/src/config";
+import { DataLayer, RoundCategory } from "data-layer";
+import { RoundApplicationAnswers } from "data-layer/dist/roundApplication.types";
 import { ethers } from "ethers";
 import { Dispatch } from "redux";
-import { getConfig } from "common/src/config";
-import RoundABI from "../contracts/abis/RoundImplementation.json";
+import { Hex } from "viem";
+import PinataClient from "common/src/services/pinata";
 import { global } from "../global";
 import { RootState } from "../reducers";
 import { Status } from "../reducers/roundApplication";
-import PinataClient from "../services/pinata";
 import { Project, RoundApplication, SignedRoundApplication } from "../types";
-import { RoundApplicationAnswers } from "../types/roundApplication";
-import { objectToDeterministicJSON } from "../utils/deterministicJSON";
-import generateUniqueRoundApplicationID from "../utils/roundApplication";
 import RoundApplicationBuilder from "../utils/RoundApplicationBuilder";
-import { getProjectURIComponents, metadataToProject } from "../utils/utils";
-import { fetchProjectApplications } from "./projects";
-import { graphqlFetch } from "../utils/graphql";
+import { objectToDeterministicJSON } from "../utils/deterministicJSON";
+import { metadataToProject } from "../utils/utils";
 
 const LitJsSdk = isJestRunning() ? null : require("gitcoin-lit-js-sdk");
 
@@ -73,6 +71,9 @@ export const APPLICATION_DATA_ERROR = "APPLICATION_DATA_ERROR";
 
 interface ApplicationDataErrorAction {
   type: typeof APPLICATION_DATA_ERROR;
+  roundAddress: string;
+  ipfsHash: string;
+  applicationData: SignedRoundApplication;
   error: string;
 }
 
@@ -133,7 +134,7 @@ const dispatchAndLogApplicationError = (
   dispatch(applicationError(roundAddress, error, step));
 };
 
-export function chainIdToChainName(chainId: number): string {
+export function chainIdToChainName(chainId: number): string | undefined {
   // eslint-disable-next-line no-restricted-syntax
   for (const name in LitJsSdk.LIT_CHAINS) {
     if (LitJsSdk.LIT_CHAINS[name].chainId === chainId) {
@@ -141,25 +142,112 @@ export function chainIdToChainName(chainId: number): string {
     }
   }
 
-  throw new Error(`couldn't find LIT chain name for chainId ${chainId}`);
+  return undefined;
 }
 
+const applyToRound =
+  (
+    roundId: string,
+    projectID: string,
+    projectUniqueID: string,
+    isV2: boolean,
+    strategy: RoundCategory,
+    signedApplication: SignedRoundApplication,
+    allo: Allo
+  ) =>
+  async (dispatch: Dispatch) => {
+    const result = allo.applyToRound({
+      projectId: projectUniqueID as `0x${string}`,
+      roundId: isV2 ? Number(roundId) : (roundId as Hex),
+      metadata: signedApplication as unknown as AnyJson,
+      strategy,
+    });
+
+    // Apply To Round
+    await result
+      .on("ipfs", (res) => {
+        if (res.type === "success") {
+          dispatch({
+            type: ROUND_APPLICATION_LOADING,
+            roundAddress: roundId,
+            status: Status.SendingTx,
+          });
+        } else {
+          console.error("IPFS Error", res.error);
+          datadogRum.addError(res.error);
+          datadogLogs.logger.error("ipfs: error uploading metadata");
+          dispatchAndLogApplicationError(
+            dispatch,
+            roundId,
+            "error uploading round application metadata",
+            Status.UploadingMetadata
+          );
+        }
+      })
+      .on("transaction", (res) => {
+        // Note: Not handled by UI
+        if (res.type === "success") {
+          console.log("Transaction", res.value);
+        } else {
+          console.error("Transaction Error", res.error);
+          datadogRum.addError(res.error);
+          datadogLogs.logger.warn("transaction error");
+        }
+      })
+      .on("transactionStatus", async (res) => {
+        if (res.type === "success") {
+          dispatch({
+            type: ROUND_APPLICATION_LOADING,
+            roundAddress: roundId,
+            projectId: projectID,
+            status: Status.Indexing,
+          });
+        } else {
+          dispatchAndLogApplicationError(
+            dispatch,
+            roundId,
+            "error calling applyToRound",
+            Status.SendingTx
+          );
+          console.log("Transaction Status Error", res.error);
+        }
+      })
+      .on("indexingStatus", (res) => {
+        if (res.type === "success") {
+          dispatch({
+            type: ROUND_APPLICATION_LOADED,
+            roundAddress: roundId,
+            projectId: projectID,
+          });
+        } else {
+          console.error("Indexing Status Error", res.error);
+        }
+      })
+      .execute();
+  };
+
 export const submitApplication =
-  (roundAddress: string, formInputs: RoundApplicationAnswers) =>
+  (
+    roundId: string,
+    formInputs: RoundApplicationAnswers,
+    allo: Allo,
+    createLinkedProject: boolean,
+    dataLayer: DataLayer
+  ) =>
   async (dispatch: Dispatch, getState: () => RootState) => {
     const state = getState();
-    const roundState = state.rounds[roundAddress];
+    const roundState = state.rounds[roundId];
 
     dispatch({
       type: ROUND_APPLICATION_LOADING,
-      roundAddress,
+      roundAddress: roundId, // todo: roundAddress is misleading
       status: Status.BuildingApplication,
     });
 
     if (roundState === undefined) {
       dispatchAndLogApplicationError(
         dispatch,
-        roundAddress,
+        roundId,
         "cannot load round data",
         Status.BuildingApplication
       );
@@ -170,7 +258,7 @@ export const submitApplication =
     if (roundApplicationMetadata === undefined) {
       dispatchAndLogApplicationError(
         dispatch,
-        roundAddress,
+        roundId,
         "cannot load round application metadata",
         Status.BuildingApplication
       );
@@ -179,13 +267,13 @@ export const submitApplication =
 
     const projectQuestion =
       roundApplicationMetadata.applicationSchema.questions.find(
-        (q) => q.type === "project"
+        (q: { type: string }) => q.type === "project"
       );
 
     if (!projectQuestion) {
       dispatchAndLogApplicationError(
         dispatch,
-        roundAddress,
+        roundId,
         "cannot find project question id",
         Status.BuildingApplication
       );
@@ -194,17 +282,11 @@ export const submitApplication =
 
     const projectID = formInputs[projectQuestion.id] as string;
 
-    const {
-      id: projectNumber,
-      registryAddress: projectRegistryAddress,
-      chainId: projectChainId,
-    } = getProjectURIComponents(projectID);
-
     const projectMetadata: any = state.grantsMetadata[projectID].metadata;
     if (projectMetadata === undefined) {
       dispatchAndLogApplicationError(
         dispatch,
-        roundAddress,
+        roundId,
         "cannot find selected project metadata",
         Status.BuildingApplication
       );
@@ -217,7 +299,7 @@ export const submitApplication =
     if (chainID === undefined) {
       dispatchAndLogApplicationError(
         dispatch,
-        roundAddress,
+        roundId,
         "cannot find chain id",
         Status.BuildingApplication
       );
@@ -227,7 +309,7 @@ export const submitApplication =
 
     dispatch({
       type: ROUND_APPLICATION_LOADING,
-      roundAddress,
+      roundId,
       status: Status.LitAuthentication,
     });
 
@@ -235,6 +317,7 @@ export const submitApplication =
     let deterministicApplication: string;
 
     try {
+      const roundAddress = roundState.round!.address;
       const builder = new RoundApplicationBuilder(
         true,
         project,
@@ -247,9 +330,10 @@ export const submitApplication =
 
       deterministicApplication = objectToDeterministicJSON(application as any);
     } catch (error) {
+      console.error("error building round application", error);
       dispatchAndLogApplicationError(
         dispatch,
-        roundAddress,
+        roundId,
         "error building round application",
         Status.LitAuthentication
       );
@@ -265,7 +349,7 @@ export const submitApplication =
 
     dispatch({
       type: ROUND_APPLICATION_LOADING,
-      roundAddress,
+      roundId,
       status: Status.SigningApplication,
     });
 
@@ -275,7 +359,7 @@ export const submitApplication =
     } catch (e) {
       dispatchAndLogApplicationError(
         dispatch,
-        roundAddress,
+        roundId,
         "error signing round application",
         Status.SigningApplication
       );
@@ -286,181 +370,196 @@ export const submitApplication =
       signature,
       application,
     };
-
-    const pinataClient = new PinataClient(getConfig());
     dispatch({
       type: ROUND_APPLICATION_LOADING,
-      roundAddress,
+      roundAddress: roundId,
       status: Status.UploadingMetadata,
     });
 
-    let resp;
-    try {
-      resp = await pinataClient.pinJSON(signedApplication);
-    } catch (e) {
-      dispatchAndLogApplicationError(
-        dispatch,
-        roundAddress,
-        "error uploading round application metadata",
-        Status.UploadingMetadata
-      );
-      return;
-    }
-    const metaPtr = {
-      protocol: "1",
-      pointer: resp.IpfsHash,
-    };
-    dispatch({
-      type: ROUND_APPLICATION_LOADING,
-      roundAddress,
-      status: Status.SendingTx,
-    });
+    const isV2 = getConfig().allo.version === "allo-v2";
 
-    const contract = new ethers.Contract(roundAddress, RoundABI, signer);
-
-    const projectUniqueID = generateUniqueRoundApplicationID(
-      Number(projectChainId),
-      projectNumber,
-      projectRegistryAddress
-    );
-
-    try {
-      const tx = await contract.applyToRound(projectUniqueID, metaPtr);
-      // FIXME: check return value of tx.wait() ??
-      await tx.wait();
-      dispatch({
-        type: ROUND_APPLICATION_LOADED,
-        roundAddress,
-        projectId: projectID,
+    if (createLinkedProject) {
+      // Create Linked Project
+      const result = allo.createProject({
+        name: projectMetadata.title,
+        metadata: {
+          canonical: {
+            registryAddress: projectMetadata.registryAddress,
+            chainId: Number(projectMetadata.chainId),
+          },
+        },
+        nonce: projectMetadata.nonce,
+        memberAddresses: [],
       });
+
+      dispatch({
+        type: ROUND_APPLICATION_LOADING,
+        roundAddress: roundId,
+        status: Status.CreateProject,
+      });
+
+      await result
+        .on("ipfs", (res) => {
+          if (res.type === "success") {
+            console.log("IPFS CID", res.value);
+          } else {
+            console.error("profile creation: IPFS Error", res.error);
+            datadogRum.addError(res.error);
+            datadogLogs.logger.error("ipfs: error uploading metadata");
+          }
+        })
+        .on("transaction", (res) => {
+          if (res.type === "success") {
+            console.log("Transaction", res.value);
+          } else {
+            console.error("profile creation: Transaction Error", res.error);
+            datadogRum.addError(res.error);
+            datadogLogs.logger.warn("transaction error");
+            dispatchAndLogApplicationError(
+              dispatch,
+              roundId,
+              "error creating linked project",
+              Status.SigningApplication
+            );
+          }
+        })
+        .on("indexingStatus", async (res) => {
+          if (res.type === "success") {
+            console.log(
+              "profile creation: Transaction Status Success",
+              res.value
+            );
+
+            const projectUniqueID = isV2
+              ? await dataLayer.getProjectAnchorByIdAndChainId({
+                  projectId: projectID,
+                  chainId: Number(chainID),
+                })
+              : projectID;
+
+            if (!projectUniqueID) {
+              dispatchAndLogApplicationError(
+                dispatch,
+                roundId,
+                "error no projectUniqueID",
+                Status.SigningApplication
+              );
+              return;
+            }
+
+            dispatch<any>(
+              applyToRound(
+                roundId,
+                projectID,
+                projectUniqueID,
+                isV2,
+                roundState.round?.payoutStrategy!,
+                signedApplication,
+                allo
+              )
+            );
+          } else {
+            console.log(
+              "profile creation: Transaction Status Error",
+              res.error
+            );
+          }
+        })
+        .execute();
+    } else {
+      const projectUniqueID = isV2
+        ? await dataLayer.getProjectAnchorByIdAndChainId({
+            projectId: projectID,
+            chainId: Number(chainID),
+          })
+        : projectID;
+
+      if (!projectUniqueID) {
+        dispatchAndLogApplicationError(
+          dispatch,
+          roundId,
+          "error no projectUniqueID",
+          Status.SigningApplication
+        );
+        return;
+      }
+
       dispatch<any>(
-        fetchProjectApplications(projectID, Number(projectChainId))
-      );
-    } catch (e: any) {
-      dispatchAndLogApplicationError(
-        dispatch,
-        roundAddress,
-        "error calling applyToRound",
-        Status.SendingTx
+        applyToRound(
+          roundId,
+          projectID,
+          projectUniqueID,
+          isV2,
+          roundState.round?.payoutStrategy!,
+          signedApplication,
+          allo
+        )
       );
     }
   };
 
 export const checkRoundApplications =
-  (chainID: ChainId, roundAddress: string, projectIDs: Array<string>) =>
+  (
+    chainId: Number,
+    roundAddress: string,
+    projectIDs: Array<string>,
+    dataLayer: DataLayer
+  ) =>
   async (dispatch: Dispatch) => {
-    const { signer } = global;
-    const contract = new ethers.Contract(roundAddress, RoundABI, signer);
-    const uniqueIDsToIDs = Object.fromEntries(
-      projectIDs.map((fullId: string) => {
-        const {
-          id,
-          registryAddress,
-          chainId: projectChainId,
-        } = getProjectURIComponents(fullId);
-        return [
-          generateUniqueRoundApplicationID(
-            Number(projectChainId),
-            id,
-            registryAddress
-          ),
-          id,
-        ];
-      })
-    );
-
-    const applicationFilter = contract.filters.NewProjectApplication(
-      Object.keys(uniqueIDsToIDs)
-    );
-
-    let applicationEvents = [];
     try {
-      applicationEvents = await contract.queryFilter(applicationFilter);
-      applicationEvents.forEach((event) => {
-        const projectID = uniqueIDsToIDs[event?.args?.project];
-        if (projectID !== undefined) {
-          dispatch({
-            type: ROUND_APPLICATION_FOUND,
-            roundAddress,
-            projectID,
-          });
-        }
-      });
-    } catch (e) {
-      // FIXME: dispatch an error?
-      datadogLogs.logger.warn("error getting round applications");
-      datadogRum.addError(e);
-      console.error("error getting round applications");
-    } finally {
-      if (applicationEvents.length === 0) {
+      const applications =
+        await dataLayer.getApplicationsByRoundIdAndProjectIds({
+          chainId: chainId as number,
+          roundId: roundAddress.toLowerCase() as `0x${Lowercase<string>}`,
+          projectIds: projectIDs,
+        });
+
+      if (!applications || applications.length === 0) {
         dispatch({
           type: ROUND_APPLICATION_NOT_FOUND,
           roundAddress,
         });
+        return;
       }
+
+      projectIDs.forEach((projectId) => {
+        const app = applications.find(
+          (application) => application.projectId === projectId
+        );
+
+        if (app) {
+          dispatch({
+            type: ROUND_APPLICATION_FOUND,
+            roundAddress,
+            projectID: projectId,
+          });
+        }
+      });
+    } catch (e) {
+      datadogLogs.logger.warn("error getting round applications");
+      datadogRum.addError(e);
+      console.error("error getting round applications");
     }
   };
 
 export const fetchApplicationData =
-  (ipfsHash: string, roundAddress: string, chainId: string) =>
-  async (dispatch: Dispatch) => {
+  (ipfsHash: string, roundAddress: string) => async (dispatch: Dispatch) => {
     const pinataClient = new PinataClient(getConfig());
     try {
-      // FETCH roundApplication DATA
-      const resp = await pinataClient.fetchJson(ipfsHash);
-
-      // FETCH roundApplication STATUS
-      const roundApplication = await graphqlFetch(
-        `
-          query GetRoundApplicationByIPFSHash(
-                $roundId: String,
-                $ipfsHash: String,
-              ) {
-            roundApplications(
-              where: {
-                round_: {
-                  id: $roundId
-                },
-                metaPtr_: {
-                  pointer: $ipfsHash
-                }
-              }
-            ) {
-              id
-              applicationIndex
-              inReview
-              project
-              status
-              statusDescription
-              statusSnapshots {
-                id
-                status
-                statusDescription
-                timestamp
-              }
-            }
-          }
-        `,
-        Number(chainId),
-        {
-          roundId: roundAddress,
-          ipfsHash,
-        }
-      );
-
-      // ASSIGNS roundApplication STATUS
-      resp.status =
-        roundApplication.data.roundApplications[0].statusDescription;
+      const applicationMetadata = await pinataClient.fetchJson(ipfsHash);
 
       dispatch({
         type: APPLICATION_DATA_LOADED,
-        applicationData: resp,
+        applicationData: applicationMetadata,
         roundAddress,
         ipfsHash,
       });
     } catch (e) {
       dispatch({
-        type: APPLICATION_DATA_ERROR,
+        type: APPLICATION_DATA_LOADED,
+        applicationData: { error: "Unable to fetch application" },
+        roundAddress,
+        ipfsHash,
       });
     }
   };

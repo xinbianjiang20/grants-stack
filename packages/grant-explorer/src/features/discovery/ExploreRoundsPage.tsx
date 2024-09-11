@@ -1,5 +1,5 @@
 import { useSearchParams } from "react-router-dom";
-import { DefaultLayout } from "../common/DefaultLayout";
+import { GradientLayout } from "../common/DefaultLayout";
 import LandingHero from "./LandingHero";
 import { LandingSection } from "./LandingSection";
 import {
@@ -10,6 +10,7 @@ import { RoundsFilter } from "./RoundsFilter";
 import { getExplorerPageTitle } from "./utils/getExplorerPageTitle";
 import { RoundsGrid } from "./RoundsGrid";
 import { getEnabledChains } from "../../app/chainConfig";
+import { useMemo } from "react";
 
 const ExploreRoundsPage = () => {
   const [params] = useSearchParams();
@@ -18,20 +19,23 @@ const ExploreRoundsPage = () => {
   // Pass the filter from the search params and build the graphql query
   const rounds = useFilterRounds(filter, getEnabledChains());
 
+  const publicRounds = useMemo(() => rounds.data?.filter(round => (round.roundMetadata && round.roundMetadata.roundType) && round.roundMetadata.roundType?.toLowerCase() !== "private"), [rounds]);
+  rounds.data = publicRounds;
+
   const sectionTitle = getExplorerPageTitle(filter);
 
   return (
-    <DefaultLayout showWalletInteraction>
+    <GradientLayout showWalletInteraction>
       <LandingHero />
 
       <LandingSection
-        title={`${sectionTitle} (${rounds.data?.length ?? 0})`}
+        title={`${sectionTitle} (${rounds?.data?.length ?? 0})`}
         className="flex-wrap"
         action={<RoundsFilter />}
       >
         <RoundsGrid {...rounds} loadingCount={6} roundType="all" />
       </LandingSection>
-    </DefaultLayout>
+    </GradientLayout>
   );
 };
 

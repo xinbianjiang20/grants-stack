@@ -18,7 +18,6 @@ import {
 } from "react-router-dom";
 import ConfirmationModal from "../common/ConfirmationModal";
 import Navbar from "../common/Navbar";
-import { useWallet } from "../common/Auth";
 import { Button } from "common/src/styles";
 import { ReactComponent as TwitterIcon } from "../../assets/twitter-logo.svg";
 import { ReactComponent as GithubIcon } from "../../assets/github-logo.svg";
@@ -28,7 +27,6 @@ import Footer from "common/src/components/Footer";
 import { datadogLogs } from "@datadog/browser-logs";
 import { useBulkUpdateGrantApplications } from "../../context/application/BulkUpdateGrantApplicationContext";
 import ProgressModal from "../common/ProgressModal";
-import { PassportVerifier } from "@gitcoinco/passport-sdk-verifier";
 import {
   AnswerBlock,
   ApplicationStatus,
@@ -40,10 +38,8 @@ import {
 } from "../api/types";
 import { VerifiableCredential } from "@gitcoinco/passport-sdk-types";
 import { Lit } from "../api/lit";
-import { utils } from "ethers";
 import NotFoundPage from "../common/NotFoundPage";
 import AccessDenied from "../common/AccessDenied";
-import { useApplicationByRoundId } from "../../context/application/ApplicationContext";
 import { Spinner } from "../common/Spinner";
 import { ApplicationBanner, ApplicationLogo } from "./BulkApplicationCommon";
 import { useRoundById } from "../../context/round/RoundContext";
@@ -51,30 +47,47 @@ import ErrorModal from "../common/ErrorModal";
 import { errorModalDelayMs } from "../../constants";
 import {
   RoundName,
-  ViewGrantsExplorerButton,
-  ApplicationOpenDateRange,
   RoundOpenDateRange,
   RoundBadgeStatus,
+  isDirectRound,
+  ApplicationOpenDateRange,
 } from "./ViewRoundPage";
 
 import {
   CalendarIcon,
   formatDateWithOrdinal,
+  getRoundStrategyType,
   getUTCTime,
+  isLitUnavailable,
+  useAllo,
   VerifiedCredentialState,
 } from "common";
-import { renderToHTML, ROUND_PAYOUT_DIRECT } from "common";
+import { renderToHTML, PassportVerifierWithExpiration } from "common";
 import { useDebugMode } from "../../hooks";
 import { getPayoutRoundDescription } from "../common/Utils";
 import moment from "moment";
 import ApplicationDirectPayout from "./ApplicationDirectPayout";
+import { useAccount } from "wagmi";
+import { ViewGrantsExplorerButton } from "../common/ViewGrantsExplorerButton";
+import { useDataLayer } from "data-layer";
+import { convertApplications } from "../api/utils";
 
 type Status = "done" | "current" | "rejected" | "approved" | undefined;
 
 export const IAM_SERVER =
   "did:key:z6MkghvGHLobLEdj1bgRLhS4LPGJAvbMA1tn2zcRyqmYU5LC";
 
-const verifier = new PassportVerifier();
+const verifier = new PassportVerifierWithExpiration();
+
+function getApplicationStatusTitle(status: ProjectStatus) {
+  switch (status) {
+    case "IN_REVIEW":
+      return "In review";
+    default:
+      // capital case
+      return status.charAt(0).toUpperCase() + status.slice(1).toLowerCase();
+  }
+}
 
 export default function ViewApplicationPage() {
   const navigate = useNavigate();
@@ -84,6 +97,7 @@ export default function ViewApplicationPage() {
   const [reviewDecision, setReviewDecision] = useState<
     ApplicationStatus | undefined
   >(undefined);
+  const dataLayer = useDataLayer();
 
   const [openModal, setOpenModal] = useState(false);
   const [openProgressModal, setOpenProgressModal] = useState(false);
@@ -96,13 +110,17 @@ export default function ViewApplicationPage() {
     twitter: VerifiedCredentialState.PENDING,
   });
 
-  const { roundId, id } = useParams() as { roundId: string; id: string };
-  const { chain, address } = useWallet();
+  const { chainId, roundId, id } = useParams() as {
+    chainId?: string;
+    roundId: string;
+    id: string;
+  };
+  const { chain, address } = useAccount();
+  const roundChainId = chainId ? Number(chainId) : chain?.id;
 
-  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-  const { applications, isLoading } = useApplicationByRoundId(roundId!);
-  const filteredApplication = applications?.filter((a) => a.id == id) || [];
-  const application = filteredApplication[0];
+  const [applications, setApplications] = useState<GrantApplication[]>();
+  const [isLoading, setIsLoading] = useState(true);
+  const [application, setApplication] = useState<GrantApplication>();
 
   const {
     bulkUpdateGrantApplications,
@@ -122,7 +140,7 @@ export default function ViewApplicationPage() {
     },
     {
       name: "Indexing",
-      description: "The subgraph is indexing the data.",
+      description: "Indexing the data.",
       status: indexingStatus,
     },
     {
@@ -134,6 +152,25 @@ export default function ViewApplicationPage() {
           : ProgressStatus.NOT_STARTED,
     },
   ];
+
+  useEffect(() => {
+    const fetchApplications = async () => {
+      const dataLayerApplications = await dataLayer.getApplicationsForManager({
+        roundId,
+        chainId: Number(roundChainId!),
+      });
+
+      const applications: GrantApplication[] = convertApplications(
+        dataLayerApplications
+      );
+      const filteredApplication = applications.filter((a) => a.id == id);
+      setApplications(applications);
+      setApplication(filteredApplication[0]);
+      setIsLoading(false);
+    };
+
+    if (roundChainId) fetchApplications();
+  }, [roundChainId, roundId]);
 
   useEffect(() => {
     if (contractUpdatingStatus === ProgressStatus.IS_ERROR) {
@@ -179,14 +216,28 @@ export default function ViewApplicationPage() {
       };
       verify();
     }
-  }, [application, application?.project?.owners, isLoading]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [application, application?.project?.owners, isLoading, verifiedProviders]);
 
-  const { round } = useRoundById(roundId);
+  const { round } = useRoundById(roundChainId!, roundId);
+  const allo = useAllo();
 
   const handleReview = async () => {
+    if (
+      reviewDecision === undefined ||
+      applications === undefined ||
+      applications[0]?.payoutStrategy?.strategyName === undefined ||
+      applications[0]?.payoutStrategy?.id === undefined
+    ) {
+      return;
+    }
+
     try {
       if (!application) {
         throw "error: application does not exist";
+      }
+
+      if (allo === null) {
+        throw "wallet not connected";
       }
 
       setOpenProgressModal(true);
@@ -196,17 +247,17 @@ export default function ViewApplicationPage() {
         application.inReview = true;
       } else {
         application.status = reviewDecision;
+        application.inReview = false;
       }
 
       await bulkUpdateGrantApplications({
         roundId: roundId,
-        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-        applications: applications!,
-        payoutAddress:
-          reviewDecision == "IN_REVIEW"
-            ? // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-              applications![0].payoutStrategy?.id
-            : undefined,
+        allo,
+        applications: applications,
+        roundStrategyAddress: applications[0].payoutStrategy.id,
+        roundStrategy: getRoundStrategyType(
+          applications[0].payoutStrategy.strategyName
+        ),
         selectedApplications: [application],
       });
     } catch (error) {
@@ -263,14 +314,18 @@ export default function ViewApplicationPage() {
         return;
       }
 
-      if (round) {
-        setHasAccess(!!round.operatorWallets?.includes(address?.toLowerCase()));
+      if (round && address) {
+        setHasAccess(!!round.operatorWallets?.includes(address.toLowerCase()));
       }
     }
   }, [address, application, isLoading, round, debugModeEnabled]);
 
   const [answerBlocks, setAnswerBlocks] = useState<AnswerBlock[]>();
   useEffect(() => {
+    if (!round || !applications) {
+      return;
+    }
+
     // Iterate through application answers and decrypt PII information
     const decryptAnswers = async () => {
       const _answerBlocks: AnswerBlock[] = [];
@@ -279,7 +334,7 @@ export default function ViewApplicationPage() {
 
       if (application?.answers && application.answers.length > 0) {
         for (let _answerBlock of application.answers) {
-          if (_answerBlock.encryptedAnswer) {
+          if (_answerBlock.encryptedAnswer && !isLitUnavailable(round.chainId!)) {
             try {
               const encryptedAnswer = _answerBlock.encryptedAnswer;
               const base64EncryptedString = [
@@ -289,9 +344,12 @@ export default function ViewApplicationPage() {
 
               const response = await fetch(base64EncryptedString);
               const encryptedString: Blob = await response.blob();
+
               const lit = new Lit({
-                chainId: chain.id,
-                contract: utils.getAddress(roundId),
+                chainId: Number(roundChainId!),
+                contract: roundId.startsWith("0x")
+                  ? roundId
+                  : round?.payoutStrategy.id ?? "",
               });
 
               const decryptedString = await lit.decryptString(
@@ -324,7 +382,7 @@ export default function ViewApplicationPage() {
       decryptAnswers();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [application, hasAccess, isLoading]);
+  }, [application, round, hasAccess, isLoading]);
 
   // Handle case where project github is not set but user github is set. if both are not available, set to null
   const registeredGithub =
@@ -337,15 +395,15 @@ export default function ViewApplicationPage() {
     return (
       <div className="relative">
         <div
-          className={`flex items-center justify-center rounded-full w-[24px] h-[24px] border-[2px] z-10 relative bg-white
+          className={`flex items-center justify-center rounded-full w-[24px] h-[24px] border-[2px] z-10 relative
         ${
           status === "done" || status === "approved"
             ? "bg-teal-500 border-teal-500"
             : status === "current"
-            ? "border-violet-500"
-            : status === "rejected"
-            ? "bg-red-500 border-red-500"
-            : ""
+              ? "border-violet-500"
+              : status === "rejected"
+                ? "bg-red-500 border-red-500"
+                : ""
         }
         `}
         >
@@ -380,8 +438,8 @@ export default function ViewApplicationPage() {
               status === "done"
                 ? "bg-teal-500"
                 : status === "rejected"
-                ? "bg-red-500"
-                : "bg-grey-200"
+                  ? "bg-red-500"
+                  : "bg-grey-200"
             }`}
             style={{
               transform: "rotate(180deg)",
@@ -430,14 +488,19 @@ export default function ViewApplicationPage() {
     return "done";
   };
 
+  const strategyType = application?.payoutStrategy?.strategyName
+    ? getRoundStrategyType(application.payoutStrategy.strategyName)
+    : undefined;
+
   const showReviewButton = () =>
-    application?.payoutStrategy?.strategyName === ROUND_PAYOUT_DIRECT &&
+    strategyType === "DirectGrants" &&
     application?.status === "PENDING" &&
     application?.inReview === false;
 
   const showApproveReject = () => {
-    if (application?.payoutStrategy?.strategyName !== ROUND_PAYOUT_DIRECT)
+    if (strategyType !== "DirectGrants") {
       return true;
+    }
 
     if (application?.status === "PENDING" && !application?.inReview) {
       return false;
@@ -449,9 +512,9 @@ export default function ViewApplicationPage() {
     <Spinner text="We're fetching the round application." />
   ) : (
     <>
-      {!applicationExists && <NotFoundPage />}
-      {applicationExists && !hasAccess && <AccessDenied />}
-      {applicationExists && hasAccess && (
+      {(!application || !applicationExists) && <NotFoundPage />}
+      {application && applicationExists && !hasAccess && <AccessDenied />}
+      {application && applicationExists && hasAccess && (
         <>
           <Navbar />
           <header className="border-b bg-grey-150 px-3 md:px-20 py-6">
@@ -464,7 +527,7 @@ export default function ViewApplicationPage() {
                 <span>{"Program Details"}</span>
               </Link>
               <ChevronRightIcon className="h-6 w-6" />
-              <Link to={`/round/${id}`}>
+              <Link to={`/round/${roundId.toString()}`}>
                 <span>{"Round Details"}</span>
               </Link>
               {round && <RoundBadgeStatus round={round} />}
@@ -488,15 +551,14 @@ export default function ViewApplicationPage() {
               </div>
             )}
             <div className="flex flex-row flex-wrap relative">
-              {round &&
-                round?.payoutStrategy.strategyName != ROUND_PAYOUT_DIRECT && (
-                  <ApplicationOpenDateRange round={round} />
-                )}
-              {round && <RoundOpenDateRange round={round} />}
+              {round && <ApplicationOpenDateRange round={round} />}
+              {round && !isDirectRound(round) && (
+                <RoundOpenDateRange round={round} />
+              )}
               <div className="absolute right-0">
                 <ViewGrantsExplorerButton
                   iconStyle="h-4 w-4"
-                  chainId={`${chain.id}`}
+                  chainId={`${chainId}`}
                   roundId={id}
                 />
               </div>
@@ -513,7 +575,7 @@ export default function ViewApplicationPage() {
                   <div className="flex flex-col">
                     {application
                       .statusSnapshots!.sort((a, b) =>
-                        moment(a.timestamp).diff(moment(b.timestamp))
+                        moment(a.updatedAt).diff(moment(b.updatedAt))
                       )
                       .map((s, index) => (
                         <Step
@@ -522,24 +584,23 @@ export default function ViewApplicationPage() {
                             s.status,
                             index === application.statusSnapshots!.length - 1
                           )}
-                          title={s.statusDescription.toLowerCase()}
+                          title={getApplicationStatusTitle(s.status)}
                           icon={
                             <CalendarIcon className="text-grey-400 h-3 w-3" />
                           }
                           text={
                             <>
                               <div className="mb-[2px]">
-                                {moment(s.timestamp).format("MMMM Do YYYY")}
+                                {moment(s.updatedAt).format("MMMM Do YYYY")}
                               </div>
-                              <div>{getUTCTime(s.timestamp)}</div>
+                              <div>{getUTCTime(s.updatedAt)}</div>
                             </>
                           }
                           index={index}
                         />
                       ))}
                     {/* When is direct round and application is in review */}
-                    {application?.payoutStrategy?.strategyName ==
-                      ROUND_PAYOUT_DIRECT &&
+                    {strategyType === "DirectGrants" &&
                       application.status === "PENDING" &&
                       !application.inReview && (
                         <>
@@ -777,10 +838,8 @@ export default function ViewApplicationPage() {
                       </div>
                     );
                   })}
-
                 {round !== undefined &&
-                  application?.payoutStrategy?.strategyName ==
-                    ROUND_PAYOUT_DIRECT &&
+                  strategyType === "DirectGrants" &&
                   application?.status === "APPROVED" &&
                   answerBlocks !== undefined &&
                   answerBlocks.length > 0 && (
@@ -855,12 +914,12 @@ function vcProviderMatchesProject(
 function vcIssuedToAddress(vc: VerifiableCredential, address: string) {
   const vcIdSplit = vc.credentialSubject.id.split(":");
   const addressFromId = vcIdSplit[vcIdSplit.length - 1];
-  return addressFromId === address;
+  return addressFromId.toLowerCase() === address.toLowerCase();
 }
 
 async function isVerified(
   verifiableCredential: VerifiableCredential,
-  verifier: PassportVerifier,
+  verifier: PassportVerifierWithExpiration,
   provider: string,
   application: GrantApplication | undefined
 ) {
