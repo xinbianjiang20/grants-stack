@@ -10,22 +10,20 @@ import {
   within,
 } from "@testing-library/react";
 import {
-  ApplicationContext,
-  ApplicationState,
-  initialApplicationState,
-} from "../../../context/application/ApplicationContext";
-import {
   BulkUpdateGrantApplicationContext,
   BulkUpdateGrantApplicationState,
   initialBulkUpdateGrantApplicationState,
 } from "../../../context/application/BulkUpdateGrantApplicationContext";
 import { MemoryRouter } from "react-router-dom";
-import {
-  getApplicationsByRoundId,
-  updateApplicationStatuses,
-} from "../../api/application";
 import { ProgressStatus } from "../../api/types";
 import { errorModalDelayMs } from "../../../constants";
+import { useApplicationsByRoundId } from "../../common/useApplicationsByRoundId";
+import { AlloOperation, useAllo } from "common";
+
+jest.mock("common", () => ({
+  ...jest.requireActual("common"),
+  useAllo: jest.fn(),
+}));
 
 jest.mock("../../api/application");
 jest.mock("react-router-dom", () => ({
@@ -38,7 +36,7 @@ const roundIdOverride = "some-round-id";
 
 jest.mock("../../common/Auth", () => ({
   useWallet: () => ({
-    chain: {},
+    chain: { id: 1 },
     address: "0x0",
     signer: {
       getChainId: () => {
@@ -52,6 +50,8 @@ jest.mock("../../../constants", () => ({
   ...jest.requireActual("../../../constants"),
   errorModalDelayMs: 0, // NB: use smaller delay for faster tests
 }));
+
+jest.mock("../../common/useApplicationsByRoundId");
 
 const grantApplications = [
   makeGrantApplicationData({ roundIdOverride }),
@@ -68,7 +68,6 @@ const bulkUpdateGrantApplications = jest.fn();
 function setupInBulkSelectionMode() {
   renderWithContext(<ApplicationsRejected />, {
     applications: grantApplications,
-    isLoading: false,
   });
 
   const select = screen.getByTestId("select");
@@ -76,18 +75,32 @@ function setupInBulkSelectionMode() {
 }
 
 describe("<ApplicationsRejected />", () => {
+  let mockBulkUpdateApplicationStatus: jest.Mock;
   beforeEach(() => {
     jest.clearAllMocks();
-    (getApplicationsByRoundId as jest.Mock).mockResolvedValue(
-      grantApplications
-    );
+    (useApplicationsByRoundId as jest.Mock).mockReturnValue({
+      data: grantApplications,
+      error: undefined,
+      isLoading: false,
+    });
+    mockBulkUpdateApplicationStatus = jest.fn().mockImplementation(() => {
+      return new AlloOperation(async () => ({
+        type: "success",
+      }));
+    });
+    (useAllo as jest.Mock).mockImplementation(() => ({
+      bulkUpdateApplicationStatus: mockBulkUpdateApplicationStatus,
+    }));
   });
 
   it("should display a loading spinner if rejected applications are loading", () => {
-    renderWithContext(<ApplicationsRejected />, {
-      applications: [],
+    (useApplicationsByRoundId as jest.Mock).mockReturnValue({
+      data: [],
+      error: undefined,
       isLoading: true,
     });
+
+    renderWithContext(<ApplicationsRejected />);
 
     expect(screen.getByTestId("loading-spinner")).toBeInTheDocument();
   });
@@ -96,7 +109,6 @@ describe("<ApplicationsRejected />", () => {
     it("should display bulk select", () => {
       renderWithContext(<ApplicationsRejected />, {
         applications: grantApplications,
-        isLoading: false,
       });
       expect(
         screen.getByText(
@@ -113,7 +125,6 @@ describe("<ApplicationsRejected />", () => {
     it("should display the cancel option when select is selected", () => {
       renderWithContext(<ApplicationsRejected />, {
         applications: grantApplications,
-        isLoading: false,
       });
 
       const selectButton = screen.getByRole("button", {
@@ -135,7 +146,6 @@ describe("<ApplicationsRejected />", () => {
     it("should display the select option when cancel is selected", () => {
       renderWithContext(<ApplicationsRejected />, {
         applications: grantApplications,
-        isLoading: false,
       });
 
       const selectButton = screen.getByRole("button", {
@@ -163,10 +173,13 @@ describe("<ApplicationsRejected />", () => {
 
   describe("when there are no approved applications", () => {
     it("should not display the bulk select option", () => {
-      renderWithContext(<ApplicationsRejected />, {
-        applications: [],
+      (useApplicationsByRoundId as jest.Mock).mockReturnValue({
+        data: [],
+        error: undefined,
         isLoading: false,
       });
+
+      renderWithContext(<ApplicationsRejected />);
 
       expect(
         screen.queryByText(
@@ -260,15 +273,8 @@ describe("<ApplicationsRejected />", () => {
       });
 
       it("starts the bulk update process to persist approved applications when confirm is selected", async () => {
-        (updateApplicationStatuses as jest.Mock).mockReturnValue(
-          new Promise(() => {
-            /* do nothing */
-          })
-        );
-
         renderWithContext(<ApplicationsRejected />, {
           applications: grantApplications,
-          isLoading: false,
         });
 
         fireEvent.click(screen.getByTestId("select"));
@@ -285,25 +291,15 @@ describe("<ApplicationsRejected />", () => {
         );
 
         await waitFor(() => {
-          expect(updateApplicationStatuses).toBeCalled();
+          expect(mockBulkUpdateApplicationStatus).toBeCalled();
         });
 
         grantApplications[0].status = "APPROVED";
 
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const expected = {
-          id: grantApplications[0].id,
-          round: grantApplications[0].round,
-          recipient: grantApplications[0].recipient,
-          projectsMetaPtr: grantApplications[0].projectsMetaPtr,
-          status: grantApplications[0].status,
-        };
-
-        expect(updateApplicationStatuses).toBeCalled();
         const updateApplicationStatusesFirstCall = (
-          updateApplicationStatuses as jest.Mock
+          mockBulkUpdateApplicationStatus as jest.Mock
         ).mock.calls[0];
-        const actualRoundId = updateApplicationStatusesFirstCall[0];
+        const actualRoundId = updateApplicationStatusesFirstCall[0].roundId;
         expect(actualRoundId).toEqual(roundIdOverride);
       });
 
@@ -333,20 +329,9 @@ describe("<ApplicationsRejected />", () => {
 
     describe("when processing bulk action fails", () => {
       beforeEach(() => {
-        const transactionBlockNumber = 10;
-        (updateApplicationStatuses as jest.Mock).mockResolvedValue({
-          transactionBlockNumber,
+        renderWithContext(<ApplicationsRejected />, {
+          contractUpdatingStatus: ProgressStatus.IS_ERROR,
         });
-
-        renderWithContext(
-          <ApplicationsRejected />,
-          {
-            applications: grantApplications,
-          },
-          {
-            contractUpdatingStatus: ProgressStatus.IS_ERROR,
-          }
-        );
 
         // select button
         const selectButton = screen.getByRole("button", { name: /Select/i });
@@ -396,10 +381,7 @@ describe("<ApplicationsRejected />", () => {
 
   describe("when bulk select is inactive", () => {
     it("does not render approve and reject buttons on each card", () => {
-      renderWithContext(<ApplicationsRejected />, {
-        applications: grantApplications,
-        isLoading: false,
-      });
+      renderWithContext(<ApplicationsRejected />);
       expect(
         screen.queryAllByTestId("bulk-approve-reject-buttons")
       ).toHaveLength(0);
@@ -409,10 +391,7 @@ describe("<ApplicationsRejected />", () => {
 
 export const renderWithContext = (
   ui: JSX.Element,
-  grantApplicationStateOverrides: Partial<ApplicationState> = {},
-  bulkUpdateApplicationStateOverrides: Partial<BulkUpdateGrantApplicationState> = {},
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  dispatch: any = jest.fn()
+  bulkUpdateApplicationStateOverrides: Partial<BulkUpdateGrantApplicationState> = {}
 ) =>
   render(
     <MemoryRouter>
@@ -422,17 +401,7 @@ export const renderWithContext = (
           ...bulkUpdateApplicationStateOverrides,
         }}
       >
-        <ApplicationContext.Provider
-          value={{
-            state: {
-              ...initialApplicationState,
-              ...grantApplicationStateOverrides,
-            },
-            dispatch,
-          }}
-        >
-          {ui}
-        </ApplicationContext.Provider>
+        {ui}
       </BulkUpdateGrantApplicationContext.Provider>
     </MemoryRouter>
   );

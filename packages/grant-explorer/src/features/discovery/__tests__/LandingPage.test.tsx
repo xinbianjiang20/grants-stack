@@ -1,5 +1,5 @@
 import { faker } from "@faker-js/faker";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import {
   makeRoundOverviewData,
   mockBalance,
@@ -7,24 +7,12 @@ import {
   mockSigner,
   renderWithContext,
 } from "../../../test-utils";
-import { __deprecated_RoundMetadata } from "../../api/round";
-import { __deprecated_RoundOverview } from "../../api/rounds";
 import LandingPage from "../LandingPage";
 import { vi } from "vitest";
-import { collections } from "../../collections/hooks/useCollections";
-import { categories } from "../../categories/hooks/useCategories";
 import { DataLayer } from "data-layer";
 import { getEnabledChains } from "../../../app/chainConfig";
 
 // Mock the API calls
-
-// Create empty mock functions - we will set these inside the tests.
-const { __deprecated_graphql_fetch, __deprecated_fetchFromIPFS } = vi.hoisted(
-  () => ({
-    __deprecated_graphql_fetch: vi.fn(),
-    __deprecated_fetchFromIPFS: vi.fn(),
-  })
-);
 
 vi.mock("common", async () => {
   const actual = await vi.importActual<typeof import("common")>("common");
@@ -39,8 +27,6 @@ vi.mock("../../api/utils", async () => {
     await vi.importActual<typeof import("../../api/utils")>("../../api/utils");
   return {
     ...actual,
-    __deprecated_graphql_fetch,
-    __deprecated_fetchFromIPFS,
   };
 });
 
@@ -74,11 +60,6 @@ vi.mock("wagmi", async () => {
 });
 
 describe("LandingPage", () => {
-  beforeEach(() => {
-    // Reset the mocks before each test
-    __deprecated_graphql_fetch.mockReset();
-    __deprecated_fetchFromIPFS.mockReset();
-  });
 
   it("renders landing page", () => {
     renderWithContext(<LandingPage />);
@@ -90,7 +71,7 @@ describe("LandingPage", () => {
     );
 
     const mockDataLayer = {
-      query: vi.fn().mockResolvedValue({
+      getRounds: vi.fn().mockResolvedValue({
         rounds: getEnabledChains().flatMap((chain) =>
           mockedRounds.map((round) => ({
             ...round,
@@ -99,12 +80,6 @@ describe("LandingPage", () => {
         ),
       }),
     } as unknown as DataLayer;
-
-    // Return the same metadata that was created by the mock
-    __deprecated_fetchFromIPFS.mockImplementation(async (cid: string) => {
-      return mockedRounds.find((round) => round.roundMetaPtr.pointer === cid)
-        ?.roundMetadata;
-    });
 
     renderWithContext(<LandingPage />, { dataLayer: mockDataLayer });
 
@@ -115,54 +90,6 @@ describe("LandingPage", () => {
           screen.getByText(round.roundMetadata?.name ?? "")
         ).toBeInTheDocument();
       });
-    });
-  });
-
-  it.skip("filters active rounds based on search query", async () => {
-    const roundMetadata: __deprecated_RoundMetadata = {
-      name: "gitcoin",
-      roundType: "private",
-      eligibility: {
-        description: faker.lorem.sentence(),
-        requirements: [],
-      },
-      programContractAddress: faker.finance.ethereumAddress(),
-    };
-
-    const activeRounds: __deprecated_RoundOverview[] = [
-      makeRoundOverviewData(),
-      makeRoundOverviewData(),
-      makeRoundOverviewData({ roundMetadata }),
-      makeRoundOverviewData({
-        roundMetadata: {
-          ...roundMetadata,
-          name: "gitcoin pro",
-        },
-      }),
-    ];
-
-    renderWithContext(<LandingPage />);
-
-    await waitFor(async () => {
-      // Make sure all active rounds are displayed initially
-      activeRounds.forEach((round) => {
-        expect(
-          screen.getByText(round.roundMetadata?.name ?? "")
-        ).toBeInTheDocument();
-      });
-    });
-
-    const searchInput = screen.getByPlaceholderText("Search...");
-    const roundCards = screen.getAllByTestId("round-card");
-    expect(roundCards.length).toEqual(activeRounds.length);
-
-    const searchQuery = "gitcoin";
-    fireEvent.change(searchInput, { target: { value: searchQuery } });
-
-    await waitFor(() => {
-      const filteredRoundCards = screen.getAllByTestId("round-name");
-      expect(filteredRoundCards.length).toEqual(2);
-      expect(filteredRoundCards[0].textContent).toEqual(searchQuery);
     });
   });
 });

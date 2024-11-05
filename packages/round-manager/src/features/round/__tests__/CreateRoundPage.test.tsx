@@ -4,11 +4,19 @@ import { faker } from "@faker-js/faker";
 import { RoundDetailForm } from "../RoundDetailForm";
 import ApplicationEligibilityForm from "../ApplicationEligibilityForm";
 import { RoundApplicationForm } from "../RoundApplicationForm";
-import { useWallet } from "../../common/Auth";
 import * as FormWizardImport from "../../common/FormWizard";
 import { fireEvent, screen } from "@testing-library/react";
 import QuadraticFundingForm from "../QuadraticFundingForm";
-
+import { DataLayer, DataLayerProvider } from "data-layer";
+jest.mock("wagmi", () => ({
+  useAccount: () => ({
+    chainId: 1,
+  }),
+}));
+jest.mock("@rainbow-me/rainbowkit", () => ({
+  ConnectButton: jest.fn(),
+  getDefaultConfig: jest.fn(),
+}));
 jest.mock("../../common/Navbar");
 jest.mock("../../common/Auth");
 const formWizardSpy = jest.spyOn(FormWizardImport, "FormWizard");
@@ -26,17 +34,18 @@ jest.mock("react-router-dom", () => ({
 
 describe("<CreateRoundPage />", () => {
   beforeEach(() => {
-    (useWallet as jest.Mock).mockReturnValue({
-      chain: {},
-      address: "0x0",
-      provider: { getNetwork: () => ({ chainId: "0x0" }) },
-    });
+   
   });
 
   it("sends program to form wizard", () => {
     const programs = [makeProgramData({ id: programId })];
 
-    renderWithProgramContext(<CreateRoundPage />, { programs });
+    renderWithProgramContext(
+      <DataLayerProvider client={{} as DataLayer}>
+        <CreateRoundPage />
+      </DataLayerProvider>,
+      { programs }
+    );
 
     const firstFormWizardCall = formWizardSpy.mock.calls[0];
     const firstCallArgument = firstFormWizardCall[0];
@@ -54,7 +63,12 @@ describe("<CreateRoundPage />", () => {
   it("exit button redirects to home", async () => {
     const programs = [makeProgramData({ id: programId })];
 
-    renderWithProgramContext(<CreateRoundPage />, { programs });
+    renderWithProgramContext(
+      <DataLayerProvider client={{} as DataLayer}>
+        <CreateRoundPage />
+      </DataLayerProvider>,
+      { programs }
+    );
 
     const exitButton = await screen.findByText("Exit");
     expect(exitButton).toBeTruthy();
@@ -66,7 +80,12 @@ describe("<CreateRoundPage />", () => {
     const programToChoose = makeProgramData({ id: programId });
     const programs = [makeProgramData(), programToChoose, makeProgramData()];
 
-    renderWithProgramContext(<CreateRoundPage />, { programs });
+    renderWithProgramContext(
+      <DataLayerProvider client={{} as DataLayer}>
+        <CreateRoundPage />
+      </DataLayerProvider>,
+      { programs }
+    );
 
     const firstFormWizardCall = formWizardSpy.mock.calls[0];
     const firstCallArgument = firstFormWizardCall[0];

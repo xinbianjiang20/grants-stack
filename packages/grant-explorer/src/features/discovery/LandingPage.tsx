@@ -1,15 +1,23 @@
-import { DefaultLayout } from "../common/DefaultLayout";
-import LandingHero from "./LandingHero";
-import { LandingSection, ViewAllLink } from "./LandingSection";
-import { RoundsGrid } from "./RoundsGrid";
+import { GradientLayout } from "../common/DefaultLayout";
 import {
-  RoundStatus,
   ACTIVE_ROUNDS_FILTER,
   ROUNDS_ENDING_SOON_FILTER,
+  RoundStatus,
   useFilterRounds,
 } from "./hooks/useFilterRounds";
-import { toQueryString } from "./RoundsFilter";
 import { getEnabledChains } from "../../app/chainConfig";
+import { useMemo } from "react";
+import {
+  filterOutPrivateRounds,
+  filterRoundsWithProjects,
+} from "../api/rounds";
+import { RoundsGrid } from "./RoundsGrid";
+import LandingHero from "./LandingHero";
+import { LandingSection, ViewAllLink } from "./LandingSection";
+import { toQueryString } from "./RoundsFilter";
+// Note: use during grants rounds or when we figure out how to use all the time.
+import { useCollections } from "../collections/hooks/useCollections";
+import { CollectionsGrid } from "../collections/CollectionsGrid";
 
 const LandingPage = () => {
   const activeRounds = useFilterRounds(
@@ -21,9 +29,30 @@ const LandingPage = () => {
     getEnabledChains()
   );
 
+  const filteredActiveRounds = useMemo(() => {
+    return filterRoundsWithProjects(
+      filterOutPrivateRounds(activeRounds.data ?? [])
+    );
+  }, [activeRounds.data]);
+  const filteredRoundsEndingSoon = useMemo(() => {
+    return filterRoundsWithProjects(
+      filterOutPrivateRounds(roundsEndingSoon.data ?? [])
+    );
+  }, [roundsEndingSoon.data]);
+
+  const collections = useCollections();
+
   return (
-    <DefaultLayout showWalletInteraction>
+    <GradientLayout showWalletInteraction showAlloVersionBanner={false}>
       <LandingHero />
+
+      {/* Note: This is being revisited for GG Rounds */}
+      <LandingSection title="Community collections">
+        {collections.data !== undefined && (
+          <CollectionsGrid data={collections.data} />
+        )}
+      </LandingSection>
+
       <LandingSection
         title="Donate now"
         action={
@@ -33,7 +62,12 @@ const LandingPage = () => {
         }
       >
         <RoundsGrid
-          {...activeRounds}
+          {...{
+            ...activeRounds,
+            data: filteredActiveRounds.sort(
+              (a, b) => b.matchAmountInUsd - a.matchAmountInUsd
+            ),
+          }}
           loadingCount={4}
           maxCount={6}
           getItemClassName={(_, i) =>
@@ -48,7 +82,6 @@ const LandingPage = () => {
           <ViewAllLink
             to={`/rounds?${toQueryString({
               orderBy: ROUNDS_ENDING_SOON_FILTER.orderBy,
-              orderDirection: ROUNDS_ENDING_SOON_FILTER.orderDirection,
               status: RoundStatus.active,
             })}`}
           >
@@ -57,13 +90,14 @@ const LandingPage = () => {
         }
       >
         <RoundsGrid
-          {...roundsEndingSoon}
+          isLoading={roundsEndingSoon.isLoading}
+          data={filteredRoundsEndingSoon}
           loadingCount={ROUNDS_ENDING_SOON_FILTER.first}
           maxCount={ROUNDS_ENDING_SOON_FILTER.first}
           roundType="endingSoon"
         />
       </LandingSection>
-    </DefaultLayout>
+    </GradientLayout>
   );
 };
 

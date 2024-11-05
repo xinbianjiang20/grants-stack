@@ -35,4 +35,4 @@ To contribute to this project, fork the repo and follow the instructions at [DEV
 
 ##### Hosting
 
-All the apps are hosted on Vercel. Preview links get created automatically for PRs. Commits to main get deployed to production automatically.
+All the apps are hosted on Vercel. Preview links get created automatically for PRs. Commits to main get deployed to production automatically

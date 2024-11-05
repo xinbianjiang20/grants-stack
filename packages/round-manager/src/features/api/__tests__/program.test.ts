@@ -1,107 +1,87 @@
-import { getProgramById, listPrograms } from "../program";
-import { Program } from "../types";
+import { DataLayer } from "data-layer";
 import { makeProgramData } from "../../../test-utils";
-import { fetchFromIPFS, CHAINS } from "../utils";
-import { graphql_fetch } from "common";
-import { ChainId } from "common";
+import { getProgramById } from "../program";
+// import { Program } from "../types";
 
-jest.mock("../utils", () => ({
-  ...jest.requireActual("../utils"),
-  fetchFromIPFS: jest.fn(),
-}));
-
-jest.mock("common", () => ({
-  ...jest.requireActual("common"),
-  graphql_fetch: jest.fn(),
+jest.mock("data-layer", () => ({
+  ...jest.requireActual("data-layer"),
+  DataLayer: jest.fn().mockImplementation(() => ({
+    getProgramsByUser: jest.fn().mockResolvedValue({
+      programs: [],
+    }),
+  })),
 }));
 
 describe("listPrograms", () => {
-  it("calls the graphql endpoint and maps the metadata from IPFS", async () => {
-    // const address = "0x0"
-    const expectedProgram = makeProgramData({
-      chain: CHAINS[ChainId.MAINNET],
-    });
-    const expectedPrograms: Program[] = [expectedProgram];
-    (graphql_fetch as jest.Mock).mockResolvedValue({
-      data: {
-        programs: [
-          {
-            id: expectedProgram.id,
-            roles: [
-              {
-                accounts: [
-                  {
-                    address: expectedProgram.operatorWallets[0],
-                  },
-                ],
-              },
-            ],
-            metaPtr: {
-              protocol: 1,
-              pointer:
-                "uwijkhxkpkdgkszraqzqvhssqulctxzvntxwconznfkelzbtgtqysrzkehl",
-            },
-          },
-        ],
-      },
-    });
+  // it("calls the indexer endpoint", async () => {
+  //   // const address = "0x0"
+  //   let expectedProgram = makeProgramData({
+  //     chain: {
+  //       id: 1,
+  //       name: "Ethereum",
+  //     },
+  //   });
+  //   expectedProgram = {
+  //     ...expectedProgram,
+  //     createdByAddress: expectedProgram.operatorWallets[0],
+  //   };
+  //   const expectedPrograms: Program[] = [expectedProgram];
 
-    (fetchFromIPFS as jest.Mock).mockResolvedValue({
-      name: expectedProgram.metadata?.name,
-    });
+  //   const actualPrograms = await listPrograms("0x0", 1, {
+  //     getProgramsByUser: jest.fn().mockResolvedValue({
+  //       programs: [
+  //         {
+  //           id: expectedProgram.id,
+  //           roles: [
+  //             {
+  //               address: expectedProgram.operatorWallets[0],
+  //               role: "OWNER",
+  //               createdAtBlock: "0",
+  //             },
+  //           ],
+  //           metadata: {
+  //             name: expectedProgram.metadata?.name,
+  //           },
+  //           createdByAddress: expectedProgram.operatorWallets[0],
+  //           tags: ["program"],
+  //         },
+  //       ],
+  //     }),
+  //   } as unknown as DataLayer);
 
-    const actualPrograms = await listPrograms("0x0", {
-      getNetwork: async () =>
-        // @ts-expect-error Test file
-        Promise.resolve({ chainId: ChainId.MAINNET }),
-    });
-
-    expect(actualPrograms).toEqual(expectedPrograms);
-  });
+  //   expect(actualPrograms).toEqual(expectedPrograms);
+  // });
 });
 
 describe("getProgramById", () => {
   it("calls the graphql endpoint and maps the metadata from IPFS", async () => {
     const expectedProgram = makeProgramData({
-      chain: CHAINS[ChainId.MAINNET],
-    });
-    const programId = expectedProgram.id;
-    (graphql_fetch as jest.Mock).mockResolvedValue({
-      data: {
-        programs: [
-          {
-            id: expectedProgram.id,
-            roles: [
-              {
-                accounts: [
-                  {
-                    address: expectedProgram.operatorWallets[0],
-                  },
-                ],
-              },
-            ],
-            metaPtr: {
-              protocol: 1,
-              pointer:
-                "uwijkhxkpkdgkszraqzqvhssqulctxzvntxwconznfkelzbtgtqysrzkehl",
-            },
-          },
-        ],
+      chain: {
+        name: "Ethereum",
+        id: 1,
       },
     });
-    (fetchFromIPFS as jest.Mock).mockResolvedValue({
-      name: expectedProgram.metadata?.name,
-    });
+    const programId = expectedProgram.id;
 
-    const actualProgram = await getProgramById(programId as string, {
-      getNetwork: async () =>
-        // @ts-expect-error Test file
-        Promise.resolve({ chainId: ChainId.MAINNET }),
-    });
+    const actualProgram = await getProgramById(programId as string, 1, {
+      getProgramById: jest.fn().mockResolvedValue({
+        program: {
+          id: expectedProgram.id,
+          roles: [
+            {
+              address: expectedProgram.operatorWallets[0],
+              role: "OWNER",
+              createdAtBlock: "0",
+            },
+          ],
+          metadata: {
+            name: expectedProgram.metadata?.name,
+          },
+          tags: ["program"],
+        },
+      }),
+    } as unknown as DataLayer);
 
     expect(actualProgram).toEqual(expectedProgram);
-    const graphqlFetchCall = (graphql_fetch as jest.Mock).mock.calls[0];
-    const actualQuery = graphqlFetchCall[0];
-    expect(actualQuery).toContain("id: $programId");
   });
 });

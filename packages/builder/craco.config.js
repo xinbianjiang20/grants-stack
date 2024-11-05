@@ -1,6 +1,11 @@
 const path = require("path");
 const CracoEsbuildPlugin = require("craco-esbuild");
 const { VerifyEnvPlugin } = require("verify-env");
+const { config } = require("dotenv");
+
+config({
+  path: path.join(__dirname, "../../.env"),
+});
 
 const esmModules = [
   "@rainbow-me",
@@ -29,6 +34,7 @@ module.exports = {
           require.resolve("jest-transform-stub"),
       },
       setupFilesAfterEnv: ["./src/setupTests.ts"],
+      testPathIgnorePatterns: ["/e2e/"],
     }),
   },
   webpack: {
@@ -69,6 +75,13 @@ module.exports = {
       options: {
         includePaths: [path.join(__dirname, `../common/src`)],
         skipEsbuildJest: true,
+        esbuildLoaderOptions: {
+          loader: "tsx", // Set the value to 'tsx' if you use typescript
+          target: "es2020",
+        },
+        esbuildMinimizerOptions: {
+          target: "es2020",
+        },
       },
     },
   ],

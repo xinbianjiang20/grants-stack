@@ -1,9 +1,9 @@
-import { array, object, string, number } from "yup";
-import { FormInputs } from "../../types";
 import {
   RoundApplicationAnswers,
   RoundApplicationQuestion,
-} from "../../types/roundApplication";
+} from "data-layer/dist/roundApplication.types";
+import { array, number, object, string } from "yup";
+import { FormInputs } from "../../types";
 
 const urlRegex =
   /^(?:https?:\/\/)?(?:www\.)?[A-Za-z0-9]+\.[A-Za-z]{2,}(?:\/.*)?$/;
@@ -55,10 +55,8 @@ export async function validateApplication(
     let validation;
 
     if (input.type === "project") {
-      return acc;
-    }
-
-    if (input.type === "email") {
+      validation = string().required("Project is required");
+    } else if (input.type === "email") {
       validation = string().email(
         `${input.title} must be a valid email address`
       );

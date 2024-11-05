@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom";
 import { act, cleanup, screen } from "@testing-library/react";
-import { PassportVerifier } from "@gitcoinco/passport-sdk-verifier";
+import { PassportVerifierWithExpiration } from "common";
 import Github from "../../../components/providers/Github";
 import setupStore from "../../../store";
 import {
@@ -48,7 +48,8 @@ describe("<Github />", () => {
 
       const verifyCredentialMock = jest.fn();
       verifyCredentialMock.mockReturnValue(true);
-      PassportVerifier.prototype.verifyCredential = verifyCredentialMock;
+      PassportVerifierWithExpiration.prototype.verifyCredential =
+        verifyCredentialMock;
 
       await act(async () => {
         renderWrapped(
@@ -56,11 +57,6 @@ describe("<Github />", () => {
           store
         );
       });
-
-      // console.log(screen.debug());
-      // TO BE ENABLE
-      // should not be a problem with REACT_APP_PASSPORT_IAM_URL properly set
-      // expect(screen.queryByText("Verified")).toBeInTheDocument();
     });
 
     test("should not show the badge if the verified account is different from the current one in the form", async () => {
@@ -84,7 +80,8 @@ describe("<Github />", () => {
 
       const verifyCredentialMock = jest.fn();
       verifyCredentialMock.mockReturnValue(true);
-      PassportVerifier.prototype.verifyCredential = verifyCredentialMock;
+      PassportVerifierWithExpiration.prototype.verifyCredential =
+        verifyCredentialMock;
 
       await act(async () => {
         renderWrapped(
@@ -118,7 +115,8 @@ describe("<Github />", () => {
 
       const verifyCredentialMock = jest.fn();
       verifyCredentialMock.mockReturnValue(true);
-      PassportVerifier.prototype.verifyCredential = verifyCredentialMock;
+      PassportVerifierWithExpiration.prototype.verifyCredential =
+        verifyCredentialMock;
 
       await act(async () => {
         renderWrapped(

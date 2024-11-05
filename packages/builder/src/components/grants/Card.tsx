@@ -1,22 +1,31 @@
+import { useDataLayer } from "data-layer";
 import { Badge, Image } from "@chakra-ui/react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { shallowEqual, useDispatch, useSelector } from "react-redux";
 import { Link } from "react-router-dom";
-import { renderToPlainText } from "common";
+import {
+  getChainById,
+  renderToPlainText,
+  stringToBlobUrl,
+  TChain,
+} from "common";
 import { fetchGrantData } from "../../actions/grantsMetadata";
 import { DefaultProjectBanner, DefaultProjectLogo } from "../../assets";
 import { RootState } from "../../reducers";
 import { Status } from "../../reducers/grantsMetadata";
 import { projectPath } from "../../routes";
 import { getProjectImage, ImgTypes } from "../../utils/components";
-import { getProjectURIComponents } from "../../utils/utils";
-import { getNetworkIcon, networkPrettyName } from "../../utils/wallet";
 import LoadingCard from "./LoadingCard";
 
 function Card({ projectId }: { projectId: string }) {
+  const dataLayer = useDataLayer();
   const dispatch = useDispatch();
+
+  const [chain, setChain] = useState<TChain | undefined>(undefined);
+
   const props = useSelector((state: RootState) => {
     const grantMetadata = state.grantsMetadata[projectId];
+    const chainId = grantMetadata?.metadata?.chainId!;
     const status = grantMetadata?.status || Status.Undefined;
     const loading = grantMetadata
       ? grantMetadata.status === Status.Loading
@@ -25,16 +34,11 @@ function Card({ projectId }: { projectId: string }) {
     const bannerImg = getProjectImage(loading, ImgTypes.bannerImg, project);
     const logoImg = getProjectImage(loading, ImgTypes.logoImg, project);
 
-    const { id, chainId } = getProjectURIComponents(projectId);
-    const projectChainName = networkPrettyName(Number(chainId));
-    const projectChainIconUri = getNetworkIcon(Number(chainId));
-
     return {
-      id,
+      id: projectId,
+      chainId,
       loading,
       currentProject: project,
-      projectChainName,
-      projectChainIconUri,
       bannerImg,
       logoImg,
       status,
@@ -43,13 +47,16 @@ function Card({ projectId }: { projectId: string }) {
 
   useEffect(() => {
     if (projectId !== undefined && props.status === Status.Undefined) {
-      dispatch(fetchGrantData(projectId));
+      dispatch(fetchGrantData(projectId, dataLayer));
+    } else {
+      setChain(getChainById(props.chainId));
     }
   }, [dispatch, projectId, props.currentProject, props.status]);
 
   function createProjectPath() {
-    const { chainId, registryAddress, id } = getProjectURIComponents(projectId);
-    return projectPath(chainId, registryAddress, id);
+    if (!props.chainId) return "";
+    const registryAddress = "0x"; // TODO: fix (technically, we dont need the regsitry address anymore)
+    return projectPath(props.chainId.toString(), registryAddress, props.id);
   }
 
   const projectDescription = renderToPlainText(
@@ -97,19 +104,21 @@ function Card({ projectId }: { projectId: string }) {
             </div>
           </Link>
 
-          <div className="flex justify-end w-fit mt-auto">
-            <Badge
-              className="flex flex-row bg-gitcoin-grey-50 ml-6 mb-4 px-3 py-1 shadow-lg"
-              borderRadius="full"
-            >
-              <Image
-                src={props.projectChainIconUri}
-                alt="chain icon"
-                className="flex flex-row h-4 mr-1 mt-[1px] rounded-full"
-              />
-              {props.projectChainName}
-            </Badge>
-          </div>
+          {chain && (
+            <div className="flex justify-end w-fit mt-auto">
+              <Badge
+                className="flex flex-row bg-gitcoin-grey-50 ml-6 mb-4 px-3 py-1 shadow-lg"
+                borderRadius="full"
+              >
+                <Image
+                  src={stringToBlobUrl(chain.icon)}
+                  alt="chain icon"
+                  className="flex flex-row h-4 mr-1 mt-[1px] rounded-full"
+                />
+                {chain.prettyName}
+              </Badge>
+            </div>
+          )}
         </>
       )}
     </div>

@@ -1,24 +1,22 @@
 import {
-  CHAINS,
   getVotingTokenOptions,
   GroupedCartProjectsByRoundId,
 } from "../../api/utils";
 import React, { useEffect, useState } from "react";
-import { VotingToken } from "../../api/types";
 import { PayoutTokenDropdown } from "./PayoutTokenDropdown";
 import { ApplyTooltip } from "./ApplyTooltip";
 import { RoundInCart } from "./RoundInCart";
-import { ChainId, useTokenPrice } from "common";
+import { useTokenPrice, TToken, stringToBlobUrl, getChainById } from "common";
 import { Button, Input } from "common/src/styles";
 import { useCartStorage } from "../../../store";
 
 type Props = {
   cart: GroupedCartProjectsByRoundId;
-  chainId: ChainId;
+  chainId: number;
 };
 
 export function CartWithProjects({ cart, chainId }: Props) {
-  const chain = CHAINS[chainId];
+  const chain = getChainById(chainId);
   const cartByRound = Object.values(cart);
 
   const store = useCartStorage();
@@ -27,7 +25,7 @@ export function CartWithProjects({ cart, chainId }: Props) {
 
   const { getVotingTokenForChain, setVotingTokenForChain } = useCartStorage();
   const selectedPayoutToken = getVotingTokenForChain(chainId);
-  const payoutTokenOptions: VotingToken[] = getVotingTokenOptions(
+  const payoutTokenOptions: TToken[] = getVotingTokenOptions(
     Number(chainId)
   ).filter((p) => p.canVote);
 
@@ -53,16 +51,16 @@ export function CartWithProjects({ cart, chainId }: Props) {
   }, [chainId]);
 
   return (
-    <div className="grow block px-[16px] py-4 bg-white">
+    <div className="grow block px-[16px] lg:pl-0 py-4 bg-white">
       <div className="flex flex-col md:flex-row justify-between border-b-2 pb-2 gap-3 mb-6">
         <div className="flex flex-row basis-[28%] gap-2">
           <img
             className="mt-2 inline-block h-9 w-9"
-            src={chain.logo}
+            src={stringToBlobUrl(chain.icon)}
             alt={"Chain Logo"}
           />
-          <h2 className="mt-3 text-xl font-semibold">{chain.name}</h2>
-          <h2 className="mt-3 text-xl font-semibold">({projectCount})</h2>
+          <h2 className="mt-3 text-2xl font-semibold">{chain.name}</h2>
+          <h2 className="mt-3 text-2xl font-semibold">({projectCount})</h2>
         </div>
         <div className="flex justify-center sm:justify-end flex-row gap-2 basis-[72%]">
           <div className="flex gap-4">
@@ -78,7 +76,7 @@ export function CartWithProjects({ cart, chainId }: Props) {
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                 setFixedDonation(e.target.value);
               }}
-              className="w-16 lg:w-24"
+              className="w-16 lg:w-18"
             />
             <PayoutTokenDropdown
               selectedPayoutToken={selectedPayoutToken}
@@ -95,7 +93,7 @@ export function CartWithProjects({ cart, chainId }: Props) {
               onClick={() => {
                 store.updateDonationsForChain(chainId, fixedDonation);
               }}
-              className="float-right md:float-none text-xs px-1 py-2 text-purple-600 border-0"
+              className="float-right md:float-none text-sm px-1 py-2 text-blue-200 border-0"
             >
               Apply to all
             </Button>

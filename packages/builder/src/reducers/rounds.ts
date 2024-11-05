@@ -27,8 +27,6 @@ export const enum Status {
   Error,
 }
 
-export type PayoutStrategy = "MERKLE" | "DIRECT";
-
 export interface RoundsState {
   [address: string]: {
     status: Status;
@@ -51,10 +49,10 @@ export const roundsReducer = (
 ): RoundsState => {
   switch (action.type) {
     case ROUNDS_LOADING_ROUND: {
-      const round = state[action.address] || roundInitialState;
+      const round = state[action.id] || roundInitialState;
       return {
         ...state,
-        [action.address]: {
+        [action.id]: {
           ...round,
           status: action.status,
         },
@@ -62,10 +60,10 @@ export const roundsReducer = (
     }
 
     case ROUNDS_ROUND_LOADED: {
-      const round = state[action.address] || roundInitialState;
+      const round = state[action.id] || roundInitialState;
       return {
         ...state,
-        [action.address]: {
+        [action.id]: {
           ...round,
           status: Status.Loaded,
           error: undefined,
@@ -75,10 +73,10 @@ export const roundsReducer = (
     }
 
     case ROUNDS_LOADING_ERROR: {
-      const round = state[action.address] || roundInitialState;
+      const round = state[action.id] || roundInitialState;
       return {
         ...state,
-        [action.address]: {
+        [action.id]: {
           ...round,
           status: Status.Error,
           error: action.error,

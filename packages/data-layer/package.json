@@ -4,7 +4,7 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "dev": "tsx watch -r dotenv-flow/config src/index.ts",
+    "dev": "tsc --watch --preserveWatchOutput",
     "start": "node -r dotenv-flow/config dist/index.js",
     "lint": "eslint --cache --max-warnings=0",
     "lint:fix": "eslint --cache --max-warnings=0 --fix",
@@ -29,6 +29,7 @@
     "@types/debug": "^4.1.8",
     "@types/knuth-shuffle-seeded": "^1.0.1",
     "@types/node": "^20.6.2",
+    "@types/papaparse": "^5.3.14",
     "@types/react": "^18.1.0",
     "@typescript-eslint/eslint-plugin": "^6.7.0",
     "@typescript-eslint/parser": "^6.7.0",
@@ -37,6 +38,7 @@
     "eslint-config-prettier": "^9.0.0",
     "eslint-plugin-import": "^2.28.1",
     "eslint-plugin-prettier": "^5.0.0",
+    "eslint-plugin-vitest": "^0.3.10",
     "leasot": "^13.3.0",
     "lefthook": "^1.4.11",
     "prettier": "^3.0.3",
@@ -51,14 +53,15 @@
   },
   "dependencies": {
     "@gitcoinco/passport-sdk-types": "^0.2.0",
-    "@gitcoinco/passport-sdk-verifier": "^0.2.2",
     "cross-fetch": "^4.0.0",
     "debug": "^4.3.4",
     "dotenv-flow": "^3.3.0",
+    "graphql-request": "^6.1.0",
     "knuth-shuffle-seeded": "^1.0.6",
+    "papaparse": "^5.4.1",
     "ts-custom-error": "^3.3.1",
     "ts-essentials": "^9.4.1",
-    "viem": "^1.5.3",
+    "viem": "2.13.10",
     "zod": "^3.22.2"
   },
   "peerDependencies": {

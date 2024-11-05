@@ -29,7 +29,7 @@ export function ApplicationLogo(props: {
   classNameOverride?: string;
 }) {
   const applicationLogoImage = props.application.project?.logoImg
-    ? `https://${process.env.REACT_APP_PINATA_GATEWAY}/ipfs/${props.application.project.logoImg}`
+    ? `${process.env.REACT_APP_IPFS_BASE_URL}/ipfs/${props.application.project.logoImg}`
     : DefaultLogoImage;
 
   return (
@@ -55,7 +55,7 @@ export function ApplicationBanner(props: {
   classNameOverride?: string;
 }) {
   const applicationBannerImage = props.application.project?.bannerImg
-    ? `https://${process.env.REACT_APP_PINATA_GATEWAY}/ipfs/${props.application.project.bannerImg}`
+    ? `${process.env.REACT_APP_IPFS_BASE_URL}/ipfs/${props.application.project.bannerImg}`
     : DefaultBannerImage;
 
   return (
@@ -221,7 +221,7 @@ export function Continue(props: {
   onClick: () => void;
 }) {
   return (
-    <div className="fixed w-full left-0 bottom-0 bg-white">
+    <div className="fixed w-full left-0 bottom-0 bg-white z-20">
       <hr />
       <div className="flex justify-end items-center py-5 pr-20">
         <span className="text-grey-400 text-sm mr-6">

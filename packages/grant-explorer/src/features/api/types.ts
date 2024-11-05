@@ -1,6 +1,4 @@
-import { ChainId } from "common";
-import { Hex } from "viem";
-import { WalletClient } from "wagmi";
+import { WalletClient } from "viem";
 
 import type { Project } from "data-layer";
 
@@ -55,7 +53,7 @@ export interface IPFSObject {
 
 export type CartProject = Project & {
   roundId: string;
-  chainId: ChainId;
+  chainId: number;
   amount: string;
 };
 
@@ -65,19 +63,3 @@ export enum ProgressStatus {
   NOT_STARTED = "NOT_STARTED",
   IS_ERROR = "IS_ERROR",
 }
-
-export type VotingToken = {
-  name: string;
-  chainId: ChainId;
-  address: Hex;
-  decimal: number;
-  logo?: string;
-  default?: boolean;
-  redstoneTokenId: string;
-  permitVersion?: string;
-  //TODO: remove if the previous default was intended to be used as defaultForVoting
-  defaultForVoting: boolean;
-  //TODO: split PayoutTokens and VotingTokens in
-  // 2 different types/lists and remove the following attribute
-  canVote: boolean;
-};

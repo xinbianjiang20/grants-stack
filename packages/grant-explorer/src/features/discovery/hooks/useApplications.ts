@@ -1,8 +1,7 @@
 import useSWRInfinite from "swr/infinite";
-import { useDataLayer } from "data-layer";
+import { useDataLayer, SearchBasedProjectCategory } from "data-layer";
 import { useMemo } from "react";
-import { Category } from "../../categories/hooks/useCategories";
-import { Collection } from "../../collections/hooks/useCollections";
+import { CollectionV1 } from "../../collections/collections";
 
 export type ApplicationFilter =
   | {
@@ -12,6 +11,10 @@ export type ApplicationFilter =
   | {
       type: "refs";
       refs: string[];
+    }
+  | {
+      type: "expanded-refs";
+      refs: { chainId: number; roundId: string; id: string }[];
     };
 
 export type ApplicationFetchOptions =
@@ -23,19 +26,29 @@ export type ApplicationFetchOptions =
       type: "applications-paginated";
       filter?: ApplicationFilter;
       order?: { type: "random"; seed: number };
+    }
+  | {
+      type: "applications-collection";
+      filter?: ApplicationFilter;
+      order?: { type: "random"; seed: number };
     };
 
-export function useApplications(options: ApplicationFetchOptions) {
+export function useApplications(options: ApplicationFetchOptions | null) {
   const dataLayer = useDataLayer();
 
   const { data, error, size, setSize } = useSWRInfinite(
-    (pageIndex) => [pageIndex, options, "/applications"],
+    (pageIndex) =>
+      options === null ? null : [pageIndex, options, "/applications"],
     async ([pageIndex]) => {
-      // TODO: Improve this - would be great if we could query like this without the switch:
-      // const res = await grantsStackDataClient.query({ page, ...options })
+      // The first argument to useSRWInfinite will ensure that this function
+      // never gets called if options is `null`. If it's still called, we fail
+      // early and clearly.
+      if (options === null) {
+        throw new Error("Bug");
+      }
       switch (options.type) {
         case "applications-search": {
-          const { results, pagination } = await dataLayer.query({
+          const { results, pagination } = await dataLayer.searchApplications({
             page: pageIndex,
             ...options,
           });
@@ -51,15 +64,40 @@ export function useApplications(options: ApplicationFetchOptions) {
           };
         }
         case "applications-paginated": {
-          const { applications, pagination } = await dataLayer.query({
-            page: pageIndex,
-            ...options,
-          });
+          const { applications, pagination } =
+            await dataLayer.getApplicationsPaginated({
+              page: pageIndex,
+              ...options,
+            });
           return {
             applications,
             pagination,
             applicationMeta: [],
           };
+        }
+        case "applications-collection": {
+          if (options.filter?.type === "expanded-refs") {
+            const applications =
+              await dataLayer.getApprovedApplicationsByExpandedRefs(
+                options.filter?.refs ?? []
+              );
+
+            const v2Applications = applications.filter(
+              (a) => a.tags?.includes("allo-v2")
+            );
+
+            return {
+              applications: v2Applications,
+              pagination: {
+                currentPage: 1,
+                totalPages: 1,
+                totalItems: v2Applications.length,
+              },
+              applicationMeta: [],
+            };
+          } else {
+            throw new Error("Unsupported filter type");
+          }
         }
       }
     },
@@ -109,8 +147,8 @@ export function createApplicationFetchOptions({
   filters,
 }: {
   searchQuery?: string;
-  category?: Category;
-  collection?: Collection;
+  category?: SearchBasedProjectCategory;
+  collection?: CollectionV1;
   filters: Filter[];
 }): ApplicationFetchOptions {
   let applicationsFetchOptions: ApplicationFetchOptions = {
@@ -134,8 +172,11 @@ export function createApplicationFetchOptions({
     };
   } else if (collection !== undefined) {
     applicationsFetchOptions = {
-      type: "applications-paginated",
-      filter: { type: "refs", refs: collection.projects },
+      type: "applications-collection",
+      filter: {
+        type: "expanded-refs",
+        refs: collection.applications,
+      },
       order: {
         type: "random",
         seed: PROJECTS_SORTING_SEED,

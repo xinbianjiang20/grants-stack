@@ -3,6 +3,11 @@ const SentryWebpackPlugin = require("@sentry/webpack-plugin");
 const CracoEsbuildPlugin = require("craco-esbuild");
 const path = require("path");
 const { VerifyEnvPlugin } = require("verify-env");
+const { config } = require("dotenv");
+
+config({
+  path: path.join(__dirname, "../../.env"),
+});
 
 const plugins = [
   new webpack.ProvidePlugin({
@@ -87,6 +92,13 @@ module.exports = {
       options: {
         includePaths: [path.join(__dirname, `../common/src`)],
         skipEsbuildJest: true,
+        esbuildLoaderOptions: {
+          loader: "tsx", // Set the value to 'tsx' if you use typescript
+          target: "es2021",
+        },
+        esbuildMinimizerOptions: {
+          target: "es2021",
+        },
       },
     },
   ],

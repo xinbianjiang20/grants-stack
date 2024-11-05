@@ -29,9 +29,10 @@ type ApplicationWithMetadata = Application & {
 export async function roundApplicationsToCSV(
   roundId: string,
   chainId: number,
+  litContract: string,
   approvedOnly?: boolean
 ) {
-  const remoteUrl = `${process.env.REACT_APP_ALLO_API_URL}/data/${chainId}/rounds/${roundId}/applications.json`;
+  const remoteUrl = `${process.env.REACT_APP_INDEXER_V2_API_URL}/data/${chainId}/rounds/${roundId}/applications.json`;
 
   // Fetch the CSV data
   const response = await fetch(remoteUrl);
@@ -50,7 +51,7 @@ export async function roundApplicationsToCSV(
 
   const lit = new Lit({
     chainId: chainId,
-    contract: roundId,
+    contract: litContract,
   });
 
   const decryptedData: Record<string, string>[] = [];

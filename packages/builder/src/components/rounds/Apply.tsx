@@ -1,6 +1,11 @@
+import { useAllo } from "common";
+import { RoundCategory, useDataLayer } from "data-layer";
+import { RoundApplicationAnswers } from "data-layer/dist/roundApplication.types";
 import { useEffect, useState } from "react";
 import { shallowEqual, useDispatch, useSelector } from "react-redux";
 import { useNavigate, useParams } from "react-router-dom";
+import { useAlloVersion } from "common/src/components/AlloVersionSwitcher";
+import { AlloVersion } from "data-layer/dist/data-layer.types";
 import {
   resetApplication,
   submitApplication,
@@ -16,12 +21,8 @@ import { Status as RoundStatus } from "../../reducers/rounds";
 import { grantsPath, projectPath, roundPath } from "../../routes";
 import colors from "../../styles/colors";
 import { Round } from "../../types";
-import { RoundApplicationAnswers } from "../../types/roundApplication";
-import { applicationSteps } from "../../utils/steps";
-import {
-  ROUND_PAYOUT_DIRECT,
-  getProjectURIComponents,
-} from "../../utils/utils";
+import { isInfinite } from "../../utils/components";
+import { getApplicationSteps } from "../../utils/steps";
 import Form from "../application/Form";
 import Button, { ButtonVariants } from "../base/Button";
 import ErrorModal from "../base/ErrorModal";
@@ -29,7 +30,6 @@ import ExitModal from "../base/ExitModal";
 import PurpleNotificationBox from "../base/PurpleNotificationBox";
 import StatusModal from "../base/StatusModal";
 import Cross from "../icons/Cross";
-import { isInfinite } from "../../utils/components";
 
 const formatDate = (unixTS: number) =>
   new Date(unixTS).toLocaleDateString(undefined);
@@ -38,7 +38,11 @@ function Apply() {
   const params = useParams();
   const dispatch = useDispatch();
   const navigate = useNavigate();
+  const dataLayer = useDataLayer();
+  const allo = useAllo();
+  const { version: alloVersion, switchToVersion } = useAlloVersion();
 
+  const [createLinkedProject, setCreateLinkedProject] = useState(false);
   const [modalOpen, toggleModal] = useState(false);
   const [roundData, setRoundData] = useState<Round>();
   const [statusModalOpen, toggleStatusModal] = useState(false);
@@ -81,7 +85,7 @@ function Apply() {
     };
   }, shallowEqual);
 
-  const isDirectRound = props.round?.payoutStrategy === ROUND_PAYOUT_DIRECT;
+  const isDirectRound = props.round?.payoutStrategy === RoundCategory.Direct;
 
   /*
    * Alert elements
@@ -93,6 +97,16 @@ function Apply() {
   useEffect(() => {
     if (props.round) {
       setRoundData(props.round);
+
+      if (!props.round.tags.includes(alloVersion)) {
+        const roundVersion = props.round.tags.find((tag) =>
+          tag.startsWith("allo-")
+        );
+        if (roundVersion === undefined) {
+          throw new Error("no allo version found, should never happen");
+        }
+        switchToVersion(roundVersion as AlloVersion);
+      }
     }
   }, [props.round]);
 
@@ -126,19 +140,19 @@ function Apply() {
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
-    if (props.applicationState?.status === ApplicationStatus.Sent) {
+    if (
+      props.applicationState &&
+      props.applicationState.status === ApplicationStatus.Sent
+    ) {
       timer = setTimeout(() => {
         dispatch(
           addAlert("success", applicationSuccessTitle, applicationSuccessBody)
         );
-        const {
-          chainId: projectChainId,
-          registryAddress,
-          id,
-        } = getProjectURIComponents(
-          props.applicationState.projectsIDs[0].toString()
-        );
-        navigate(projectPath(projectChainId, registryAddress, id));
+        const id = props.applicationState.projectsIDs[0].toString();
+
+        // Note: this is a hack to navigate to the project page after the application is submitted
+        // todo: later remove the entire registry path from the url
+        navigate(projectPath(chainId as string, "0x", id));
       }, 1500);
     }
 
@@ -198,7 +212,7 @@ function Apply() {
           onClose={() => navigate(0)}
         >
           <>
-            There has been an error loading the grant round data. Please try
+            There has been an error loading the round data. Please try
             refreshing the page. If the issue persists, please reach out to us
             on{" "}
             <a
@@ -249,7 +263,8 @@ function Apply() {
                 <p className="font-semibold mt-4">Application Period:</p>
                 <p>
                   {formatDate(props.round.applicationsStartTime * 1000)} -{" "}
-                  {isInfinite(props.round.applicationsEndTime)
+                  {isInfinite(props.round.applicationsEndTime) ||
+                  !props.round.applicationsEndTime
                     ? "No End Date"
                     : formatDate(props.round.applicationsEndTime * 1000)}
                 </p>
@@ -258,7 +273,8 @@ function Apply() {
             <p className="font-semibold mt-4">Round Dates:</p>
             <p>
               {formatDate(props.round.roundStartTime * 1000)} -{" "}
-              {isInfinite(props.round.applicationsEndTime)
+              {isInfinite(props.round.applicationsEndTime) ||
+              !props.round.applicationsEndTime
                 ? "No End Date"
                 : formatDate(props.round.roundEndTime * 1000)}
             </p>
@@ -288,10 +304,25 @@ function Apply() {
                 roundApplication={props.applicationMetadata}
                 showErrorModal={props.showErrorModal || false}
                 round={props.round}
-                onSubmit={(answers: RoundApplicationAnswers) => {
-                  dispatch(submitApplication(props.round!.address, answers));
+                onSubmit={(
+                  answers: RoundApplicationAnswers,
+                  createProfile: boolean
+                ) => {
+                  if (allo === null) {
+                    return;
+                  }
+                  dispatch(
+                    submitApplication(
+                      props.round!.id,
+                      answers,
+                      allo,
+                      createProfile,
+                      dataLayer
+                    )
+                  );
                   toggleStatusModal(true);
                 }}
+                setCreateLinkedProject={setCreateLinkedProject}
               />
             )}
           </div>
@@ -305,7 +336,7 @@ function Apply() {
             open={statusModalOpen}
             onClose={toggleStatusModal}
             currentStatus={props.applicationState.status}
-            steps={applicationSteps}
+            steps={getApplicationSteps(createLinkedProject)}
             error={props.applicationState.error}
             title="Please hold while we submit your grant round application."
           />

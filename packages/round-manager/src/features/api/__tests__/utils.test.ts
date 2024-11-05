@@ -1,15 +1,10 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { enableFetchMocks, FetchMock } from "jest-fetch-mock";
-
 import { fetchFromIPFS, generateApplicationSchema, pinToIPFS } from "../utils";
-import { ChainId } from "common";
-
 import {
-  initialQuestionsQF,
+  getInitialQuestionsQF,
   initialRequirements,
 } from "../../round/RoundApplicationForm";
-import { checkGrantApplicationStatus } from "../application";
-import { MetadataPointer } from "../types";
-import { graphql_fetch } from "common";
 
 enableFetchMocks();
 
@@ -28,7 +23,7 @@ describe("fetchFromIPFS", () => {
     const res = await fetchFromIPFS(cid);
 
     expect(fetchMock).toHaveBeenCalledWith(
-      `https://${process.env.REACT_APP_PINATA_GATEWAY}/ipfs/${cid}`
+      `${process.env.REACT_APP_IPFS_BASE_URL}/ipfs/${cid}`
     );
     expect(res).toEqual({ name: "My First Metadata" });
   });
@@ -43,7 +38,7 @@ describe("fetchFromIPFS", () => {
     await expect(fetchFromIPFS(cid)).rejects.toHaveProperty("status", 404);
 
     expect(fetchMock).toHaveBeenCalledWith(
-      `https://${process.env.REACT_APP_PINATA_GATEWAY}/ipfs/${cid}`
+      `${process.env.REACT_APP_IPFS_BASE_URL}/ipfs/${cid}`
     );
   });
 });
@@ -228,132 +223,10 @@ describe("pinToIPFS", () => {
   });
 });
 
-describe("checkGrantApplicationStatus", () => {
-  beforeEach(() => {
-    fetchMock.resetMocks();
-  });
-
-  it("should return grant application status from IPFS", async () => {
-    fetchMock.mockResponseOnce(
-      JSON.stringify([
-        {
-          id: "1",
-          status: "FRAUD",
-        },
-      ])
-    );
-
-    const metadataPointer: MetadataPointer = {
-      protocol: 1,
-      pointer: "QmPMERYmqZtbHmqd2UzRhX9F4cixnMQU2GFa2hYAsQ6J3D",
-    };
-
-    const res = await checkGrantApplicationStatus("1", metadataPointer);
-
-    expect(fetchMock).toHaveBeenCalledWith(
-      `https://${process.env.REACT_APP_PINATA_GATEWAY}/ipfs/${metadataPointer.pointer}`
-    );
-    expect(res).toEqual("FRAUD");
-  });
-});
-
-describe("graphql_fetch", () => {
-  beforeEach(() => {
-    fetchMock.resetMocks();
-  });
-
-  it("should return data from a graphql endpoint", async () => {
-    fetchMock.mockResponseOnce(
-      JSON.stringify({
-        data: {
-          programs: [
-            { id: "0x123456789544fe81379e2951623f008d200e1d18" },
-            { id: "0x123456789567fe81379e2951623f008d200e1d20" },
-          ],
-        },
-      })
-    );
-
-    const query = `
-      programs {
-        id
-      }
-    `;
-
-    const res = await graphql_fetch(query, ChainId.MAINNET);
-
-    const params = {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        query,
-        variables: {},
-      }),
-    };
-
-    expect(fetchMock).toHaveBeenCalledWith(
-      `${process.env.REACT_APP_SUBGRAPH_MAINNET_API}`,
-      params
-    );
-    expect(res.data.programs[0]).toEqual({
-      id: "0x123456789544fe81379e2951623f008d200e1d18",
-    });
-  });
-  it("should reject on non-200 status code", async () => {
-    fetchMock.mockResponseOnce("", {
-      status: 400,
-    });
-
-    const query = `
-      programs {
-        id
-      }
-    `;
-
-    await expect(graphql_fetch(query, ChainId.MAINNET)).rejects.toHaveProperty(
-      "status",
-      400
-    );
-
-    const params = {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        query,
-        variables: {},
-      }),
-    };
-
-    expect(fetchMock).toHaveBeenCalledWith(
-      `${process.env.REACT_APP_SUBGRAPH_MAINNET_API}`,
-      params
-    );
-  });
-
-  it("should fetch data from the correct graphql endpoint for optimism network", async () => {
-    fetchMock.mockResponseOnce(
-      JSON.stringify({
-        data: {},
-      })
-    );
-
-    await graphql_fetch(`programs { id }`, ChainId.OPTIMISM_MAINNET_CHAIN_ID);
-
-    expect(fetchMock).toHaveBeenCalledWith(
-      `${process.env.REACT_APP_SUBGRAPH_OPTIMISM_MAINNET_API}`,
-      expect.anything()
-    );
-  });
-});
-
 describe("generateApplicationSchema", () => {
   it("should return valid application schema", () => {
     const expectedSchema = {
-      questions: initialQuestionsQF
+      questions: getInitialQuestionsQF(1)
         .filter((q) => !q.metadataExcluded)
         .map((question) => ({
           title: question.title,
@@ -377,7 +250,7 @@ describe("generateApplicationSchema", () => {
     };
 
     const schema = generateApplicationSchema(
-      initialQuestionsQF,
+      getInitialQuestionsQF(1),
       initialRequirements
     );
 

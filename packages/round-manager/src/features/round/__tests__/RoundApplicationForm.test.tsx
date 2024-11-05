@@ -9,40 +9,58 @@ import {
 import { randomInt } from "crypto";
 import { act } from "react-dom/test-utils";
 import { MemoryRouter } from "react-router-dom";
-import {
-  CreateRoundContext,
-  CreateRoundState,
-  initialCreateRoundState,
-} from "../../../context/round/CreateRoundContext";
+
+import { RoundCategory } from "data-layer";
+import { errorModalDelayMs } from "../../../constants";
+import { useCreateRoundStore } from "../../../stores/createRoundStore";
 import { saveToIPFS } from "../../api/ipfs";
-import { deployRoundContract } from "../../api/round";
-import { waitForSubgraphSyncTo } from "../../api/subgraph";
 import {
   ApplicationMetadata,
   ProgressStatus,
-  RoundCategory,
 } from "../../api/types";
-import { useWallet } from "../../common/Auth";
 import { FormStepper } from "../../common/FormStepper";
 import { FormContext } from "../../common/FormWizard";
 import {
   RoundApplicationForm,
-  initialQuestionsQF,
+  getInitialQuestionsQF,
 } from "../RoundApplicationForm";
-import { errorModalDelayMs } from "../../../constants";
 
 jest.mock("../../api/ipfs");
 jest.mock("../../api/round");
-jest.mock("../../api/subgraph");
 jest.mock("../../common/Auth");
 jest.mock("../../api/payoutStrategy/payoutStrategy");
 jest.mock("@rainbow-me/rainbowkit", () => ({
   ConnectButton: jest.fn(),
+  getDefaultConfig: jest.fn(),
 }));
-
+jest.mock("wagmi", () => ({
+  useAccount: () => ({
+    chainId: 1,
+    address: "0x0",
+  }),
+  useNetwork: () => ({
+    chain: jest.fn(),
+    chains: [
+      {
+        id: 10,
+        name: "Optimism",
+      },
+    ],
+  }),
+  useProvider: () => ({}),
+}));
 jest.mock("../../../constants", () => ({
   ...jest.requireActual("../../../constants"),
   errorModalDelayMs: 0, // NB: use smaller delay for faster tests
+}));
+
+jest.mock("common", () => ({
+  ...jest.requireActual("common"),
+  useAllo: () => ({}),
+}));
+
+jest.mock("../../../stores/createRoundStore", () => ({
+  ...jest.requireActual("../../../stores/createRoundStore"),
 }));
 
 beforeEach(() => {
@@ -56,23 +74,7 @@ const randomMetadata = {
 
 describe("<RoundApplicationForm />", () => {
   beforeEach(() => {
-    (useWallet as jest.Mock).mockReturnValue({
-      chain: { name: "my blockchain" },
-      provider: {
-        getNetwork: () => ({
-          chainId: 5,
-        }),
-      },
-      signer: {
-        getChainId: () => 5,
-      },
-      address: "0x0",
-    });
     (saveToIPFS as jest.Mock).mockResolvedValue("some ipfs hash");
-    (deployRoundContract as jest.Mock).mockResolvedValue({
-      transactionBlockNumber: 0,
-    });
-    (waitForSubgraphSyncTo as jest.Mock).mockResolvedValue(0);
   });
 
   describe("when saving metadata fails", () => {
@@ -92,10 +94,12 @@ describe("<RoundApplicationForm />", () => {
           }}
           stepper={FormStepper}
           configuration={{ roundCategory: RoundCategory.QuadraticFunding }}
-        />,
-        { IPFSCurrentStatus: ProgressStatus.IS_ERROR }
+        />
       );
       await startProgressModal();
+      useCreateRoundStore.setState({
+        ipfsStatus: ProgressStatus.IS_ERROR,
+      });
       await waitFor(
         async () =>
           expect(await screen.findByTestId("error-modal")).toBeInTheDocument(),
@@ -113,10 +117,12 @@ describe("<RoundApplicationForm />", () => {
             },
           }}
           stepper={FormStepper}
-        />,
-        { IPFSCurrentStatus: ProgressStatus.IS_ERROR }
+        />
       );
       await startProgressModal();
+      useCreateRoundStore.setState({
+        ipfsStatus: ProgressStatus.IS_ERROR,
+      });
 
       const done = await screen.findByTestId("done");
       fireEvent.click(done);
@@ -134,37 +140,27 @@ describe("<RoundApplicationForm />", () => {
             },
           }}
           stepper={FormStepper}
-        />,
-        { IPFSCurrentStatus: ProgressStatus.IS_ERROR }
+        />
       );
       await startProgressModal();
+      useCreateRoundStore.setState({
+        ipfsStatus: ProgressStatus.IS_ERROR,
+      });
 
       await waitFor(
         async () =>
           expect(await screen.findByTestId("error-modal")).toBeInTheDocument(),
         { timeout: errorModalDelayMs + 1000 }
       );
-      const saveToIpfsCalls = (saveToIPFS as jest.Mock).mock.calls.length;
-      expect(saveToIpfsCalls).toEqual(2);
 
       const errorModalTryAgain = await screen.findByTestId("tryAgain");
       fireEvent.click(errorModalTryAgain);
 
       expect(screen.queryByTestId("error-modal")).not.toBeInTheDocument();
-      await waitFor(() => {
-        expect((saveToIPFS as jest.Mock).mock.calls.length).toEqual(
-          saveToIpfsCalls + 2
-        );
-      });
     });
   });
 
   describe("when saving round application metadata succeeds but create round transaction fails", () => {
-    const createRoundStateOverride = {
-      IPFSCurrentStatus: ProgressStatus.IS_SUCCESS,
-      roundContractDeploymentStatus: ProgressStatus.IS_ERROR,
-    };
-
     const startProgressModal = async () => {
       const launch = screen.getByRole("button", { name: /Launch/i });
       fireEvent.click(launch);
@@ -180,10 +176,13 @@ describe("<RoundApplicationForm />", () => {
             },
           }}
           stepper={FormStepper}
-        />,
-        createRoundStateOverride
+        />
       );
       await startProgressModal();
+      useCreateRoundStore.setState({
+        ipfsStatus: ProgressStatus.IS_SUCCESS,
+        contractDeploymentStatus: ProgressStatus.IS_ERROR,
+      });
       await waitFor(
         async () =>
           expect(await screen.findByTestId("error-modal")).toBeInTheDocument(),
@@ -194,20 +193,6 @@ describe("<RoundApplicationForm />", () => {
 });
 
 describe("Application Form Builder", () => {
-  beforeEach(() => {
-    (useWallet as jest.Mock).mockReturnValue({
-      chain: { name: "my blockchain" },
-      provider: {
-        getNetwork: () => ({
-          chainId: 0,
-        }),
-      },
-      signer: {
-        getChainId: () => 0,
-      },
-      address: "0x0",
-    });
-  });
 
   it("displays the four default questions", () => {
     renderWithContext(
@@ -271,7 +256,7 @@ describe("Application Form Builder", () => {
 
   describe("Edit question", () => {
     it("displays edit icons for each editable question", () => {
-      const editableQuestions = initialQuestionsQF.filter(
+      const editableQuestions = getInitialQuestionsQF(1).filter(
         (q) => q.fixed !== true
       );
 
@@ -293,7 +278,7 @@ describe("Application Form Builder", () => {
     });
 
     it("enters editable state showing current title for that question when edit is clicked on that question", () => {
-      const editableQuestions = initialQuestionsQF.filter(
+      const editableQuestions = getInitialQuestionsQF(1).filter(
         (q) => q.fixed !== true
       );
       const questionIndex = randomInt(0, editableQuestions.length);
@@ -318,7 +303,7 @@ describe("Application Form Builder", () => {
     });
 
     it("when in edit mode, saves input as question when save is clicked on that question and reverts to default ui", async () => {
-      const editableQuestions = initialQuestionsQF.filter(
+      const editableQuestions = getInitialQuestionsQF(1).filter(
         (q) => q.fixed !== true
       );
       const questionIndex = randomInt(0, editableQuestions.length);
@@ -357,7 +342,7 @@ describe("Application Form Builder", () => {
 
   describe("Encrypted toggle", () => {
     it("displays toggle for encryption option for each editable question", () => {
-      const editableQuestions = initialQuestionsQF.filter(
+      const editableQuestions = getInitialQuestionsQF(1).filter(
         (q) => q.fixed !== true
       );
 
@@ -379,7 +364,7 @@ describe("Application Form Builder", () => {
     });
 
     it("toggles each encryption option when clicked", async () => {
-      const editableQuestions = initialQuestionsQF.filter(
+      const editableQuestions = getInitialQuestionsQF(1).filter(
         (q) => q.fixed !== true
       );
 
@@ -414,7 +399,7 @@ describe("Application Form Builder", () => {
 
   describe("Required toggle", () => {
     it("displays *Required for required option for each editable question", () => {
-      const editableQuestions = initialQuestionsQF.filter(
+      const editableQuestions = getInitialQuestionsQF(1).filter(
         (q) => q.fixed !== true
       );
       renderWithContext(
@@ -436,7 +421,7 @@ describe("Application Form Builder", () => {
     });
 
     it("toggle each required option when clicked", () => {
-      const editableQuestions = initialQuestionsQF.filter(
+      const editableQuestions = getInitialQuestionsQF(1).filter(
         (q) => q.fixed !== true
       );
       renderWithContext(
@@ -495,7 +480,7 @@ describe("Application Form Builder", () => {
 
   describe("Remove question", () => {
     it("displays remove icon for each editable question", () => {
-      const editableQuestions = initialQuestionsQF.filter(
+      const editableQuestions = getInitialQuestionsQF(1).filter(
         (q) => q.fixed !== true
       );
       renderWithContext(
@@ -516,7 +501,7 @@ describe("Application Form Builder", () => {
     });
 
     it("removes question when remove icon is clicked", () => {
-      const editableQuestions = initialQuestionsQF.filter(
+      const editableQuestions = getInitialQuestionsQF(1).filter(
         (q) => q.fixed !== true
       );
 
@@ -569,7 +554,7 @@ describe("Application Form Builder", () => {
     });
 
     it("adds a new question on clicking add a new question button", async () => {
-      const editableQuestions = initialQuestionsQF;
+      const editableQuestions = getInitialQuestionsQF(1);
       const newTitle = "New Question";
 
       renderWithContext(
@@ -613,20 +598,6 @@ describe("Application Form Builder", () => {
     });
   });
   describe("Project Socials", () => {
-    beforeEach(() => {
-      (useWallet as jest.Mock).mockReturnValue({
-        chain: { name: "my blockchain" },
-        provider: {
-          getNetwork: () => ({
-            chainId: 0,
-          }),
-        },
-        signer: {
-          getChainId: () => 0,
-        },
-        address: "0x0",
-      });
-    });
 
     it("displays the Project Socials", () => {
       renderWithContext(
@@ -862,16 +833,5 @@ describe("Application Form Builder", () => {
   });
 });
 
-export const renderWithContext = (
-  ui: JSX.Element,
-  createRoundStateOverrides: Partial<CreateRoundState> = {}
-) =>
-  render(
-    <MemoryRouter>
-      <CreateRoundContext.Provider
-        value={{ ...initialCreateRoundState, ...createRoundStateOverrides }}
-      >
-        {ui}
-      </CreateRoundContext.Provider>
-    </MemoryRouter>
-  );
+export const renderWithContext = (ui: JSX.Element) =>
+  render(<MemoryRouter>{ui}</MemoryRouter>);

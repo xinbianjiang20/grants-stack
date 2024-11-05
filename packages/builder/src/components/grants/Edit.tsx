@@ -1,7 +1,9 @@
+import { useDataLayer } from "data-layer";
 import { useEffect, useState } from "react";
 import { shallowEqual, useDispatch, useSelector } from "react-redux";
 import { useParams } from "react-router-dom";
-import { useSwitchNetwork } from "wagmi";
+import { useSwitchChain } from "wagmi";
+import { getChainById } from "common";
 import { fetchGrantData } from "../../actions/grantsMetadata";
 import {
   credentialsSaved,
@@ -12,7 +14,6 @@ import { RootState } from "../../reducers";
 import { Status as GrantsMetadataStatus } from "../../reducers/grantsMetadata";
 import colors from "../../styles/colors";
 import { ProjectFormStatus } from "../../types";
-import { networkPrettyName } from "../../utils/wallet";
 import Button, { ButtonVariants } from "../base/Button";
 import ExitModal from "../base/ExitModal";
 import Preview from "../base/Preview";
@@ -23,9 +24,10 @@ import VerificationForm from "../base/VerificationForm";
 import Cross from "../icons/Cross";
 
 function EditProject() {
+  const dataLayer = useDataLayer();
   const params = useParams();
   const dispatch = useDispatch();
-  const { switchNetwork } = useSwitchNetwork();
+  const { switchChain } = useSwitchChain();
 
   const [modalOpen, toggleModal] = useState(false);
   const [formStatus, setFormStatus] = useState<ProjectFormStatus>(
@@ -33,11 +35,10 @@ function EditProject() {
   );
 
   const props = useSelector((state: RootState) => {
-    const fullId = `${params.chainId}:${params.registryAddress}:${params.id}`;
-    const grantMetadata = state.grantsMetadata[fullId];
+    const grantMetadata = state.grantsMetadata[params.id!];
 
     return {
-      id: fullId,
+      id: params.id,
       projectMetadata: grantMetadata?.metadata,
       metadataStatus: grantMetadata
         ? grantMetadata.status
@@ -45,35 +46,33 @@ function EditProject() {
       error: state.newGrant.error,
       formMetaData: state.projectForm.metadata,
       chainId: state.web3.chainID,
+      projectNumber: grantMetadata?.metadata?.projectNumber,
     };
   }, shallowEqual);
 
   const isOnProjectChain = Number(props.chainId) === Number(params.chainId);
 
   const onSwitchNetwork = () => {
-    if (switchNetwork) {
-      switchNetwork(Number(params.chainId));
+    if (switchChain) {
+      switchChain({ chainId: Number(params.chainId) });
     }
   };
 
-  const renderNetworkChangeModal = () => {
-    const roundNetworkName = networkPrettyName(Number(params.chainId));
-    return (
+  const renderNetworkChangeModal = () => (
+    <SwitchNetworkModal
       // eslint-disable-next-line
-      <SwitchNetworkModal
-        networkName={roundNetworkName}
-        onSwitchNetwork={onSwitchNetwork}
-        action="edit this project"
-      />
-    );
-  };
+      networkName={getChainById(Number(params.chainId)).prettyName}
+      onSwitchNetwork={onSwitchNetwork}
+      action="edit this project"
+    />
+  );
 
   useEffect(() => {
     if (
       props.id !== undefined &&
       props.metadataStatus === GrantsMetadataStatus.Undefined
     ) {
-      dispatch(fetchGrantData(props.id));
+      dispatch(fetchGrantData(props.id, dataLayer));
     }
   }, [dispatch, props.id, props.metadataStatus]);
 
@@ -172,7 +171,7 @@ function EditProject() {
       case ProjectFormStatus.Preview:
         return (
           <Preview
-            currentProjectId={props.id}
+            currentProjectId={props.projectNumber?.toString() || props.id}
             setVerifying={(verifyUpdate) => setFormStatus(verifyUpdate)}
           />
         );
@@ -191,19 +190,6 @@ function EditProject() {
           </div>
         </div>
         <div className="w-full sm:w-2/3 flex sm:flex-row flex-col items-center justify-end">
-          {/* <div className="flex flex-row">
-            {formStatus === ProjectFormStatus.Preview && (
-              <div className="flex flex-row items-center">
-                <span className="icon mr-2">
-                  <EyeIcon className="w-6 h-5 inline-block text-violet-500 align-middle" />
-                </span>
-                <span className="text-sm text-gray-500">
-                  This is a preview of your project&apos;s public page on
-                  Gitcoin Explorer.
-                </span>
-              </div>
-            )}
-          </div> */}
           <div className="flex flex-row">
             <Button
               variant={ButtonVariants.outlineDanger}

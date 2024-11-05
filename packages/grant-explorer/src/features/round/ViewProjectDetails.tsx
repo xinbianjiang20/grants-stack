@@ -1,42 +1,51 @@
 import { datadogLogs } from "@datadog/browser-logs";
-import { VerifiableCredential } from "@gitcoinco/passport-sdk-types";
+import { ShieldCheckIcon } from "@heroicons/react/24/solid";
 import {
-  BoltIcon,
-  GlobeAltIcon,
-  ShieldCheckIcon,
-} from "@heroicons/react/24/solid";
-import { Client } from "allo-indexer-client";
-import { formatDateWithOrdinal, renderToHTML } from "common";
-import { Button } from "common/src/styles";
+  formatDateWithOrdinal,
+  renderToHTML,
+  useParams,
+  useValidateCredential,
+} from "common";
+import { getAlloVersion } from "common/src/config";
 import { formatDistanceToNowStrict } from "date-fns";
-import React, { useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
-import useSWR from "swr";
-import { useEnsName } from "wagmi";
+import React, {
+  ComponentProps,
+  ComponentPropsWithRef,
+  createElement,
+  FunctionComponent,
+  PropsWithChildren,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import { useAccount, useEnsName } from "wagmi";
 import DefaultLogoImage from "../../assets/default_logo.png";
 import { ReactComponent as GithubIcon } from "../../assets/github-logo.svg";
 import { ReactComponent as TwitterIcon } from "../../assets/twitter-logo.svg";
+import { ReactComponent as EthereumIcon } from "../../assets/icons/ethereum-icon.svg";
+import { ReactComponent as GlobeIcon } from "../../assets/icons/globe-icon.svg";
 import { useRoundById } from "../../context/RoundContext";
-import { Spinner } from "../common/Spinner";
-import {
-  CartProject,
-  GrantApplicationFormAnswer,
-  Project,
-  ProjectCredentials,
-  ProjectMetadata,
-} from "../api/types";
-import Footer from "common/src/components/Footer";
-import Navbar from "../common/Navbar";
+import { CartProject, GrantApplicationFormAnswer, Project } from "../api/types";
 import { ProjectBanner } from "../common/ProjectBanner";
 import RoundEndedBanner from "../common/RoundEndedBanner";
 import Breadcrumb, { BreadcrumbItem } from "../common/Breadcrumb";
 import { isDirectRound, isInfiniteDate } from "../api/utils";
 import { useCartStorage } from "../../store";
-import { getAddress } from "viem";
-import { Box, Tab, Tabs } from "@chakra-ui/react";
+import { Box, Skeleton, SkeletonText, Tab, Tabs } from "@chakra-ui/react";
 import { GrantList } from "./KarmaGrant/GrantList";
 import { useGap } from "../api/gap";
-import { DataLayer, useDataLayer } from "data-layer";
+import { StatList } from "./OSO/ImpactStats";
+import { useOSO } from "../api/oso";
+import { CheckIcon, ShoppingCartIcon } from "@heroicons/react/24/outline";
+import { useDataLayer } from "data-layer";
+import { DefaultLayout } from "../common/DefaultLayout";
+import { truncate } from "../common/utils/truncate";
+import {
+  mapApplicationToProject,
+  mapApplicationToRound,
+  useApplication,
+} from "../projects/hooks/useApplication";
+import { PassportWidget } from "../common/PassportWidget";
 
 const CalendarIcon = (props: React.SVGProps<SVGSVGElement>) => {
   return (
@@ -52,22 +61,17 @@ const CalendarIcon = (props: React.SVGProps<SVGSVGElement>) => {
         fillRule="evenodd"
         clipRule="evenodd"
         d="M4 0C3.44772 0 3 0.447715 3 1V2H2C0.895431 2 0 2.89543 0 4V14C0 15.1046 0.895431 16 2 16H14C15.1046 16 16 15.1046 16 14V4C16 2.89543 15.1046 2 14 2H13V1C13 0.447715 12.5523 0 12 0C11.4477 0 11 0.447715 11 1V2H5V1C5 0.447715 4.55228 0 4 0ZM4 5C3.44772 5 3 5.44772 3 6C3 6.55228 3.44772 7 4 7H12C12.5523 7 13 6.55228 13 6C13 5.44772 12.5523 5 12 5H4Z"
-        fill="#757087"
+        fill="currentColor"
       />
     </svg>
   );
 };
 
-enum VerifiedCredentialState {
-  VALID,
-  INVALID,
-  PENDING,
-}
-
-const boundFetch = fetch.bind(window);
-
-export const IAM_SERVER =
-  "did:key:z6MkghvGHLobLEdj1bgRLhS4LPGJAvbMA1tn2zcRyqmYU5LC";
+const useProjectDetailsParams = useParams<{
+  chainId: string;
+  roundId: string;
+  applicationId: string;
+}>;
 
 export default function ViewProjectDetails() {
   const [selectedTab, setSelectedTab] = useState(0);
@@ -76,16 +80,43 @@ export default function ViewProjectDetails() {
     "====> Route: /round/:chainId/:roundId/:applicationId"
   );
   datadogLogs.logger.info(`====> URL: ${window.location.href}`);
-  const { chainId, roundId, applicationId } = useParams();
+  const {
+    chainId,
+    roundId,
+    applicationId: paramApplicationId,
+  } = useProjectDetailsParams();
+  const dataLayer = useDataLayer();
+  const { address: walletAddress } = useAccount();
 
-  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-  const { round, isLoading } = useRoundById(Number(chainId), roundId!);
+  let applicationId: string;
 
-  const projectToRender = round?.approvedProjects?.find(
-    (project) => project.grantApplicationId === applicationId
+  /// handle URLs where the application ID is ${roundId}-${applicationId}
+  if (paramApplicationId.includes("-")) {
+    applicationId = paramApplicationId.split("-")[1];
+  } else {
+    applicationId = paramApplicationId;
+  }
+
+  const { data: application, error } = useApplication(
+    {
+      chainId: Number(chainId as string),
+      roundId,
+      applicationId: applicationId,
+    },
+    dataLayer
   );
 
+  const projectToRender = application && mapApplicationToProject(application);
+  const round = application && mapApplicationToRound(application);
+  round && (round.chainId = Number(chainId));
+  const isSybilDefenseEnabled =
+    round?.roundMetadata?.quadraticFundingConfig?.sybilDefense === true ||
+    round?.roundMetadata?.quadraticFundingConfig?.sybilDefense !== "none";
+
   const { grants } = useGap(projectToRender?.projectRegistryId as string);
+  const { stats } = useOSO(
+    projectToRender?.projectMetadata.projectGithub as string
+  );
 
   const currentTime = new Date();
   const isAfterRoundEndDate =
@@ -93,24 +124,44 @@ export default function ViewProjectDetails() {
     (isInfiniteDate(round.roundEndTime)
       ? false
       : round && round.roundEndTime <= currentTime);
-  const isBeforeRoundEndDate =
-    round &&
-    (isInfiniteDate(round.roundEndTime) || round.roundEndTime > currentTime);
 
+  const isBeforeRoundStartDate =
+    round &&
+    (isInfiniteDate(round.roundStartTime)
+      ? false
+      : round && currentTime < round.roundStartTime);
+
+  const alloVersion = getAlloVersion();
+
+  useEffect(() => {
+    if (
+      isAfterRoundEndDate !== undefined &&
+      roundId?.startsWith("0x") &&
+      alloVersion === "allo-v2" &&
+      !isAfterRoundEndDate
+    ) {
+      window.location.href = `https://explorer-v1.gitcoin.co${window.location.pathname}${window.location.hash}`;
+    }
+  }, [roundId, alloVersion, isAfterRoundEndDate]);
+
+  const disableAddToCartButton =
+    (alloVersion === "allo-v2" && roundId.startsWith("0x")) ||
+    isAfterRoundEndDate ||
+    isBeforeRoundStartDate;
   const { projects, add, remove } = useCartStorage();
 
   const isAlreadyInCart = projects.some(
-    (project) => project.grantApplicationId === applicationId
+    (project) =>
+      project.grantApplicationId === applicationId &&
+      project.chainId === Number(chainId) &&
+      project.roundId === roundId
   );
-
-  /*TODO: projectToRender can be undefined, casting will hide that condition.*/
   const cartProject = projectToRender as CartProject;
 
   if (cartProject !== undefined) {
-    /* eslint-disable-next-line @typescript-eslint/no-non-null-assertion */
-    cartProject.roundId = roundId!;
-    /* eslint-disable-next-line @typescript-eslint/no-non-null-assertion */
-    cartProject.chainId = Number(chainId!);
+    cartProject.roundId = roundId;
+    cartProject.chainId = Number(chainId);
+    cartProject.grantApplicationId = applicationId;
   }
 
   const breadCrumbs = [
@@ -128,33 +179,42 @@ export default function ViewProjectDetails() {
     },
   ] as BreadcrumbItem[];
 
+  const {
+    projectMetadata: { title, description = "", bannerImg },
+  } = projectToRender ?? { projectMetadata: {} };
   const projectDetailsTabs = useMemo(
     () => [
       {
         name: "Project details",
         content: (
           <>
-            <DescriptionTitle />
-            {!!projectToRender && (
+            <h3 className="text-3xl mt-8 mb-4 font-modern-era-medium text-blue-800">
+              About
+            </h3>
+            {projectToRender ? (
               <>
-                <Detail
-                  text={projectToRender.projectMetadata.description}
-                  testID="project-metadata"
-                />
+                <Detail text={description} testID="project-metadata" />
                 <ApplicationFormAnswers
                   answers={projectToRender.grantApplicationFormAnswers}
                 />
               </>
+            ) : (
+              <SkeletonText />
             )}
           </>
         ),
       },
       {
-        name: "Grants",
-        content: <GrantList grants={grants} />,
+        name: "Impact Measurement",
+        content: (
+          <React.Fragment>
+            <StatList stats={stats} />
+            <GrantList grants={grants} />
+          </React.Fragment>
+        ),
       },
     ],
-    [grants, projectToRender]
+    [stats, grants, projectToRender, description]
   );
 
   const handleTabChange = (tabIndex: number) => {
@@ -163,104 +223,74 @@ export default function ViewProjectDetails() {
 
   return (
     <>
-      <Navbar />
-      {isAfterRoundEndDate && (
-        <div>
-          <RoundEndedBanner />
-        </div>
-      )}
-      <div className="relative top-28 lg:mx-20 h-screen px-4 py-7">
-        <div className="flex flex-col pb-6" data-testid="bread-crumbs">
-          <Breadcrumb items={breadCrumbs} />
-        </div>
-        <main className={"flex flex-col items-center"}>
-          {isLoading || projectToRender === undefined ? (
-            <Spinner text="Loading project application..." />
-          ) : (
-            <>
-              <Header projectMetadata={projectToRender.projectMetadata} />
-              <div className="flex flex-col w-full md:invisible sm:-mt-[230px]">
-                <Sidebar
-                  isAlreadyInCart={isAlreadyInCart}
-                  isBeforeRoundEndDate={isBeforeRoundEndDate}
-                  removeFromCart={() => {
-                    remove(cartProject.grantApplicationId);
-                  }}
-                  addToCart={() => {
-                    add(cartProject);
-                  }}
-                />
-              </div>
-              <div className="flex flex-col md:flex-row xl:max-w-[1800px] w-full">
-                <div className="grow">
-                  <div className="relative">
-                    <ProjectTitle
-                      projectMetadata={projectToRender.projectMetadata}
-                    />
-                    <AboutProject projectToRender={projectToRender} />
-                    <ProjectDetailsTabs
-                      selected={selectedTab}
-                      onChange={handleTabChange}
-                      tabs={projectDetailsTabs.map((tab) => tab.name)}
-                    />
-                  </div>
-                  <div>{projectDetailsTabs[selectedTab].content}</div>
-                </div>
-                {round && !isDirectRound(round) && (
-                  <div className="md:visible invisible  min-w-fit">
-                    <Sidebar
-                      isAlreadyInCart={isAlreadyInCart}
-                      isBeforeRoundEndDate={isBeforeRoundEndDate}
-                      removeFromCart={() => {
-                        remove(cartProject.grantApplicationId);
-                      }}
-                      addToCart={() => {
-                        add(cartProject);
-                      }}
-                    />
-                  </div>
-                )}
-              </div>
-            </>
+      <DefaultLayout>
+        {isAfterRoundEndDate && (
+          <div className="relative top-6">
+            <RoundEndedBanner />
+          </div>
+        )}
+        <div className="flex flex-row justify-between my-8">
+          <div className="flex items-center pt-2" data-testid="bread-crumbs">
+            <Breadcrumb items={breadCrumbs} />
+          </div>
+          {walletAddress && round && isSybilDefenseEnabled && (
+            <div data-testid="passport-widget">
+              <PassportWidget round={round} alignment="right" />
+            </div>
           )}
-        </main>
-        <div className="my-11">
-          <Footer />
         </div>
-      </div>
-    </>
-  );
-}
-
-function Header(props: { projectMetadata: ProjectMetadata }) {
-  return (
-    <div className={"w-full xl:max-w-[1800px]"}>
-      <ProjectBanner
-        bannerImgCid={props.projectMetadata.bannerImg ?? null}
-        classNameOverride="h-32 w-full object-cover lg:h-80 rounded"
-        resizeHeight={320}
-      />
-      <div className="pl-4 sm:pl-6 lg:pl-8">
-        <div className="-mt-12 sm:-mt-16 sm:flex sm:items-end sm:space-x-5">
-          <div className="flex">
-            <ProjectLogo
-              projectMetadata={props.projectMetadata}
-              classNameOverride="h-24 w-24 rounded-full ring-4 ring-white bg-white sm:h-32 sm:w-32"
-            />
+        <div className="mb-4">
+          <ProjectBanner
+            bannerImgCid={bannerImg ?? null}
+            classNameOverride="h-32 w-full object-cover lg:h-80 rounded md:rounded-3xl"
+            resizeHeight={320}
+          />
+          <div className="pl-4 sm:pl-6 lg:pl-8">
+            <div className="sm:flex sm:items-end sm:space-x-5">
+              <div className="flex">
+                <ProjectLogo {...projectToRender?.projectMetadata} />
+              </div>
+            </div>
           </div>
         </div>
-      </div>
-    </div>
-  );
-}
-
-function ProjectTitle(props: { projectMetadata: ProjectMetadata }) {
-  return (
-    <div className="border-b-2 pb-2">
-      <h1 className="text-3xl mt-6 font-thin text-black">
-        {props.projectMetadata.title}
-      </h1>
-    </div>
+        <div className="md:flex gap-4 flex-row-reverse">
+          {round && !isDirectRound(round) && (
+            <Sidebar
+              isAlreadyInCart={isAlreadyInCart}
+              isBeforeRoundEndDate={!disableAddToCartButton}
+              removeFromCart={() => {
+                remove(cartProject);
+              }}
+              addToCart={() => {
+                add(cartProject);
+              }}
+            />
+          )}
+          <div className="flex-1">
+            {error === undefined ? (
+              <>
+                <Skeleton isLoaded={Boolean(title)}>
+                  <h1 className="text-4xl font-modern-era-medium tracking-tight text-grey-500">
+                    {title}
+                  </h1>
+                </Skeleton>
+                <ProjectLinks project={projectToRender} />
+                <ProjectDetailsTabs
+                  selected={selectedTab}
+                  onChange={handleTabChange}
+                  tabs={projectDetailsTabs.map((tab) => tab.name)}
+                />
+                <div className="[&_a]:underline">
+                  {projectDetailsTabs[selectedTab].content}
+                </div>
+              </>
+            ) : (
+              <p>Couldn't load project data.</p>
+            )}
+          </div>
+        </div>
+      </DefaultLayout>
+    </>
   );
 }
 
@@ -270,7 +300,7 @@ function ProjectDetailsTabs(props: {
   selected: number;
 }) {
   return (
-    <Box className="__project-details-tabs absolute" bottom={0.5}>
+    <Box className="" bottom={0.5}>
       {props.tabs.length > 0 && (
         <Tabs
           display="flex"
@@ -286,176 +316,111 @@ function ProjectDetailsTabs(props: {
   );
 }
 
-function AboutProject(props: { projectToRender: Project }) {
-  const dataLayer = useDataLayer();
-  const [verifiedProviders, setVerifiedProviders] = useState<{
-    [key: string]: VerifiedCredentialState;
-  }>({
-    github: VerifiedCredentialState.PENDING,
-    twitter: VerifiedCredentialState.PENDING,
-  });
+function ProjectLinks({ project }: { project?: Project }) {
+  const {
+    recipient,
+    projectMetadata: {
+      createdAt,
+      website,
+      projectTwitter,
+      projectGithub,
+      userGithub,
+      credentials,
+    },
+  } = project ?? { projectMetadata: {} };
 
-  const { projectToRender } = props;
-  const projectRecipient =
-    projectToRender.recipient.slice(0, 6) +
-    "..." +
-    projectToRender.recipient.slice(-4);
-  const { data: ensName } = useEnsName({
-    // @ts-expect-error Temp until viem
-    address: projectToRender.recipient ?? "",
-  });
-  const projectWebsite = projectToRender.projectMetadata.website;
-  const projectTwitter = projectToRender.projectMetadata.projectTwitter;
-  const userGithub = projectToRender.projectMetadata.userGithub;
-  const projectGithub = projectToRender.projectMetadata.projectGithub;
+  // @ts-expect-error Temp until viem (could also cast recipient as Address or update the type)
+  const ens = useEnsName({ address: recipient, enabled: Boolean(recipient) });
 
-  const date = new Date(projectToRender.projectMetadata.createdAt ?? 0);
-  const formattedDateWithOrdinal = `Created on: ${formatDateWithOrdinal(date)}`;
+  const { isValid: validTwitterCredential } = useValidateCredential(
+    credentials?.twitter,
+    projectTwitter
+  );
 
-  useEffect(() => {
-    if (projectToRender?.projectMetadata?.owners) {
-      const credentials: ProjectCredentials =
-        projectToRender?.projectMetadata.credentials ?? {};
+  const { isValid: validGithubCredential } = useValidateCredential(
+    credentials?.github,
+    projectGithub
+  );
 
-      if (!credentials) {
-        return;
-      }
-      const verify = async () => {
-        const newVerifiedProviders: { [key: string]: VerifiedCredentialState } =
-          { ...verifiedProviders };
-        for (const provider of Object.keys(verifiedProviders)) {
-          const verifiableCredential = credentials[provider];
-          if (verifiableCredential) {
-            newVerifiedProviders[provider] = await isVerified(
-              { verifiableCredential, provider, project: projectToRender },
-              { dataLayer }
-            );
-          }
-        }
-
-        setVerifiedProviders(newVerifiedProviders);
-      };
-      verify();
-    }
-  }, [projectToRender?.projectMetadata.owners]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const getVerifiableCredentialVerificationResultView = (provider: string) => {
-    switch (verifiedProviders[provider]) {
-      case VerifiedCredentialState.VALID:
-        return (
-          <span className="rounded-full bg-teal-100 px-2.5 inline-flex flex-row justify-center items-center">
-            <ShieldCheckIcon
-              className="w-5 h-5 text-teal-500 mr-2"
-              data-testid={`${provider}-verifiable-credential`}
-            />
-            <p className="text-teal-500 font-medium text-xs">Verified</p>
-          </span>
-        );
-      default:
-        return <></>;
-    }
-  };
+  const createdOn =
+    createdAt &&
+    `Created on: ${formatDateWithOrdinal(new Date(createdAt ?? 0))}`;
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 border-b-2 pt-2 pb-16">
-      {projectRecipient && (
-        <span className="flex items-center mt-4 gap-1">
-          <BoltIcon className="h-4 w-4 mr-1 opacity-40" />
-          <DetailSummary
-            text={`${ensName ? ensName : projectRecipient}`}
-            testID="project-recipient"
-            sm={true}
-          />
-        </span>
+    <div
+      className={`grid md:grid-cols-2 gap-4  border-y-[2px] py-4 my-4 ${
+        // isLoading?
+        createdAt ? "" : "bg-grey-100 animate-pulse"
+      }`}
+    >
+      <ProjectLink icon={EthereumIcon}>
+        {ens.data || truncate(recipient)}
+      </ProjectLink>
+      <ProjectLink icon={CalendarIcon}>{createdOn}</ProjectLink>
+      <ProjectLink url={website} icon={GlobeIcon}>
+        {website}
+      </ProjectLink>
+      {projectTwitter !== undefined && (
+        <ProjectLink
+          url={`https://twitter.com/${projectTwitter}`}
+          icon={TwitterIcon}
+          isVerified={validTwitterCredential}
+        >
+          {projectTwitter}
+        </ProjectLink>
       )}
-      {projectWebsite && (
-        <span className="flex items-center mt-4 gap-1">
-          <GlobeAltIcon className="h-4 w-4 mr-1 opacity-40" />
-          <a
-            href={projectWebsite}
-            target="_blank"
-            rel="noreferrer"
-            className="text-base font-normal text-black"
-          >
-            <DetailSummary
-              text={`${projectWebsite}`}
-              testID="project-website"
-            />
-          </a>
-        </span>
+      {projectGithub !== undefined && (
+        <ProjectLink
+          url={`https://github.com/${projectGithub}`}
+          icon={GithubIcon}
+          isVerified={validGithubCredential}
+        >
+          {projectGithub}
+        </ProjectLink>
       )}
-      {projectTwitter && (
-        <span className="flex items-center mt-4 gap-1">
-          <TwitterIcon className="h-4 w-4 mr-1 opacity-40" />
-          <a
-            href={`https://twitter.com/${projectTwitter}`}
-            target="_blank"
-            rel="noreferrer"
-            className="text-base font-normal text-black"
-          >
-            <DetailSummary
-              text={`@${projectTwitter}`}
-              testID="project-twitter"
-            />
-          </a>
-          {getVerifiableCredentialVerificationResultView("twitter")}
-        </span>
-      )}
-      {projectToRender.projectMetadata.createdAt && (
-        <span className="flex items-center mt-4 gap-1">
-          <CalendarIcon className="h-4 w-4 mr-1 opacity-80" />
-          <DetailSummary
-            text={`${formattedDateWithOrdinal}`}
-            testID="project-createdAt"
-          />
-        </span>
-      )}
-      {userGithub && (
-        <span className="flex items-center mt-4 gap-1">
-          <GithubIcon className="h-4 w-4 mr-1 opacity-40" />
-          <a
-            href={`https://github.com/${userGithub}`}
-            target="_blank"
-            rel="noreferrer"
-            className="text-base font-normal text-black"
-          >
-            <DetailSummary text={`${userGithub}`} testID="user-github" />
-          </a>
-        </span>
-      )}
-      {projectGithub && (
-        <span className="flex items-center mt-4 gap-1">
-          <GithubIcon className="h-4 w-4 mr-1 opacity-40" />
-          <a
-            href={`https://github.com/${projectGithub}`}
-            target="_blank"
-            rel="noreferrer"
-            className="text-base font-normal text-black"
-          >
-            <DetailSummary text={`${projectGithub}`} testID="project-github" />
-          </a>
-          {getVerifiableCredentialVerificationResultView("github")}
-        </span>
+      {userGithub !== undefined && (
+        <ProjectLink url={`https://github.com/${userGithub}`} icon={GithubIcon}>
+          {userGithub}
+        </ProjectLink>
       )}
     </div>
   );
 }
 
-function DescriptionTitle() {
-  return (
-    <h1 className="text-2xl mt-8 mb-4 font-thin text-black">Description</h1>
-  );
+function ProjectLink({
+  icon,
+  children,
+  url,
+  isVerified,
+}: PropsWithChildren<{
+  icon: FunctionComponent<ComponentPropsWithRef<"svg">>;
+  url?: string;
+  isVerified?: boolean;
+}>) {
+  const Component = url ? "a" : "div";
+  return children ? (
+    <div className="flex items-center gap-2">
+      <div>{createElement(icon, { className: "w-4 h-4 text-grey-400" })}</div>
+      <div className="flex gap-2">
+        <Component
+          href={url}
+          target="_blank"
+          className={url && "text-blue-300 hover:underline"}
+        >
+          {children}
+        </Component>
+        {isVerified && <VerifiedBadge />}
+      </div>
+    </div>
+  ) : null;
 }
 
-function DetailSummary(props: { text: string; testID: string; sm?: boolean }) {
+function VerifiedBadge() {
   return (
-    <p
-      className={`${props.sm ? "text-sm" : "text-base"} font-normal text-black`}
-      data-testid={props.testID}
-    >
-      {" "}
-      {props.text}{" "}
-    </p>
+    <span className="bg-teal-100 flex gap-2 rounded-full px-2 text-xs items-center font-modern-era-medium text-teal-500">
+      <ShieldCheckIcon className="w-4 h-4" />
+      Verified
+    </span>
   );
 }
 
@@ -465,7 +430,7 @@ function Detail(props: { text: string; testID: string }) {
       dangerouslySetInnerHTML={{
         __html: renderToHTML(props.text.replace(/\n/g, "\n\n")),
       }}
-      className="text-md prose prose-h1:text-lg prose-h2:text-base prose-h3:text-base prose-a:text-blue-600 max-w-full"
+      className="text-blue-800 text-md prose prose-h1:text-lg prose-h2:text-base prose-h3:text-base prose-a:text-blue-600 max-w-full"
       data-testid={props.testID}
     />
   );
@@ -483,7 +448,7 @@ function ApplicationFormAnswers(props: {
 
   return (
     <div>
-      <h1 className="text-2xl mt-8 font-thin text-black">
+      <h1 className="text-2xl mt-8 font-thin text-blue-800">
         Additional Information
       </h1>
       <div>
@@ -493,7 +458,7 @@ function ApplicationFormAnswers(props: {
             : answer.answer;
           return (
             <div key={answer.questionId}>
-              <p className="text-md mt-8 mb-3 font-semibold text-black">
+              <p className="text-md mt-8 mb-3 font-semibold text-blue-800">
                 {answer.question}
               </p>
               {answer.type === "paragraph" ? (
@@ -504,9 +469,12 @@ function ApplicationFormAnswers(props: {
                   className="text-md prose prose-h1:text-lg prose-h2:text-base prose-h3:text-base prose-a:text-blue-600"
                 ></p>
               ) : (
-                <p className="text-base text-black">
-                  {answerText.replace(/\n/g, "<br/>")}
-                </p>
+                <p
+                  className="text-base text-blue-800"
+                  dangerouslySetInnerHTML={{
+                    __html: renderToHTML(answerText.replace(/\n/g, "\n\n")),
+                  }}
+                ></p>
               )}
             </div>
           );
@@ -516,31 +484,17 @@ function ApplicationFormAnswers(props: {
   );
 }
 
-export function ProjectLogo(props: {
-  projectMetadata: ProjectMetadata;
-  classNameOverride?: string;
-}) {
-  const { projectMetadata, classNameOverride } = props;
+const ipfsGateway = process.env.REACT_APP_IPFS_BASE_URL;
 
-  const applicationLogoImage = projectMetadata.logoImg
-    ? `https://${process.env.REACT_APP_PINATA_GATEWAY}/ipfs/${projectMetadata.logoImg}`
-    : DefaultLogoImage;
+function ProjectLogo({ logoImg }: { logoImg?: string }) {
+  const src = logoImg ? `${ipfsGateway}/ipfs/${logoImg}` : DefaultLogoImage;
 
   return (
-    <div className="pl-4">
-      <div className="-mt-6 sm:-mt-6 sm:flex sm:items-end sm:space-x-5">
-        <div className="flex">
-          <img
-            className={
-              classNameOverride ??
-              "h-12 w-12 rounded-full ring-4 ring-white bg-white"
-            }
-            src={applicationLogoImage}
-            alt="Project Logo"
-          />
-        </div>
-      </div>
-    </div>
+    <img
+      className={"-mt-16 h-32 w-32 rounded-full ring-4 ring-white bg-white"}
+      src={src}
+      alt="Project Logo"
+    />
   );
 }
 
@@ -551,7 +505,7 @@ function Sidebar(props: {
   addToCart: () => void;
 }) {
   return (
-    <div className="mt-2 md:self-auto md:ml-6">
+    <div className="min-w-[320px] h-fit mb-6 rounded-3xl bg-gray-50">
       <ProjectStats />
       {props.isBeforeRoundEndDate && (
         <CartButtonToggle
@@ -564,43 +518,17 @@ function Sidebar(props: {
   );
 }
 
-// NOTE: Consider moving this
-export function useRoundApprovedApplication(
-  chainId: number,
-  roundId: string,
-  projectId: string
-) {
-  // use chain id and project id from url params
-  const client = new Client(
-    boundFetch,
-    process.env.REACT_APP_ALLO_API_URL ?? "",
-    chainId
-  );
-
-  return useSWR([roundId, "/projects"], async ([roundId]) => {
-    const applications = await client.getRoundApplications(
-      getAddress(roundId.toLowerCase())
-    );
-
-    return applications.find(
-      (app) => app.projectId === projectId && app.status === "APPROVED"
-    );
-  });
-}
-
 export function ProjectStats() {
-  const { chainId, roundId, applicationId } = useParams();
-  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-  const { round } = useRoundById(Number(chainId), roundId!);
-
-  const projectToRender = round?.approvedProjects?.find(
-    (project) => project.grantApplicationId === applicationId
-  );
-
-  const { data: application } = useRoundApprovedApplication(
-    Number(chainId),
-    roundId as string,
-    projectToRender?.projectRegistryId as string
+  const { chainId, roundId, applicationId } = useProjectDetailsParams();
+  const { round } = useRoundById(Number(chainId), roundId);
+  const dataLayer = useDataLayer();
+  const { data: application } = useApplication(
+    {
+      chainId: Number(chainId as string),
+      roundId,
+      applicationId: applicationId,
+    },
+    dataLayer
   );
 
   const timeRemaining =
@@ -612,32 +540,55 @@ export function ProjectStats() {
     (isInfiniteDate(round.roundEndTime) || round.roundEndTime > new Date());
 
   return (
-    <div
-      className={
-        "rounded bg-gray-50 mb-4 p-4 gap-4 grid grid-cols-3 md:flex md:flex-col"
-      }
-    >
-      <div>
-        <h3>${application?.amountUSD.toFixed(2) ?? "-"}</h3>
-        <p>funding received in current round</p>
-      </div>
-      <div>
-        <h3>{application?.uniqueContributors ?? "-"}</h3>
-        <p>contributors</p>
-      </div>
-      <div>
-        {isBeforeRoundEndDate ? (
-          <>
-            <h3>{timeRemaining ?? "-"}</h3>
-            <p>to go</p>
-          </>
-        ) : (
-          <>
-            <p>Round ended</p>
-            <h3>{timeRemaining} ago</h3>
-          </>
-        )}
-      </div>
+    <div className="rounded-3xl flex-auto p-3 md:p-4 gap-4 flex flex-col text-blue-800">
+      <Stat
+        isLoading={!application}
+        value={`$${application?.totalAmountDonatedInUsd.toFixed(2)}`}
+      >
+        funding received in current round
+      </Stat>
+      <Stat isLoading={!application} value={application?.uniqueDonorsCount}>
+        contributors
+      </Stat>
+
+      <Stat
+        isLoading={isBeforeRoundEndDate === undefined}
+        value={timeRemaining}
+        className={
+          // Explicitly check for true - could be undefined if round hasn't been loaded yet
+          isBeforeRoundEndDate === true || isBeforeRoundEndDate === undefined
+            ? ""
+            : "flex-col-reverse"
+        }
+      >
+        {
+          // If loading - render empty
+          isBeforeRoundEndDate === undefined
+            ? ""
+            : isBeforeRoundEndDate
+              ? "to go"
+              : "Round ended"
+        }
+      </Stat>
+    </div>
+  );
+}
+
+export function Stat({
+  value,
+  children,
+  isLoading,
+  className,
+}: {
+  value?: string | number | null;
+  isLoading?: boolean;
+} & ComponentProps<"div">) {
+  return (
+    <div className={`flex flex-col ${className}`}>
+      <Skeleton isLoaded={!isLoading} height={"36px"}>
+        <h4 className="text-3xl">{value}</h4>
+      </Skeleton>
+      <span className="text-sm md:text-base">{children}</span>
     </div>
   );
 }
@@ -647,96 +598,20 @@ function CartButtonToggle(props: {
   addToCart: () => void;
   removeFromCart: () => void;
 }) {
-  // if the project is not added, show the add to cart button
-  // if the project is added to the cart, show the remove from cart button
-  if (props.isAlreadyInCart) {
-    return (
-      <Button
-        data-testid="remove-from-cart"
-        onClick={props.removeFromCart}
-        className={
-          "w-full md:w-80 bg-transparent hover:bg-red-500 text-red-400 font-semibold hover:text-white py-2 px-4 border border-red-400 hover:border-transparent rounded"
-        }
-      >
-        Remove from Cart
-      </Button>
-    );
-  }
-
   return (
-    <Button
-      data-testid="add-to-cart"
-      onClick={() => {
-        props.addToCart();
-      }}
-      className={
-        "w-full md:w-80 bg-transparent hover:bg-violet-400 text-grey-900 font-semibold hover:text-white py-2 px-4 border border-violet-400 hover:border-transparent rounded"
+    <button
+      className="font-mono bg-blue-100 hover:bg-blue-300  hover:text-grey-50 transition-all w-full items-center justify-center rounded-b-3xl rounded-t-none p-4 inline-flex gap-2"
+      data-testid={props.isAlreadyInCart ? "remove-from-cart" : "add-to-cart"}
+      onClick={() =>
+        props.isAlreadyInCart ? props.removeFromCart() : props.addToCart()
       }
     >
-      Add to Cart
-    </Button>
+      {props.isAlreadyInCart ? (
+        <CheckIcon className="w-5 h-5" />
+      ) : (
+        <ShoppingCartIcon className="w-5 h-5" />
+      )}
+      {props.isAlreadyInCart ? "Added to cart" : "Add to cart"}
+    </button>
   );
-}
-
-function vcProviderMatchesProject(
-  provider: string,
-  verifiableCredential: VerifiableCredential,
-  project: Project | undefined
-) {
-  let vcProviderMatchesProject = false;
-  if (provider === "twitter") {
-    vcProviderMatchesProject =
-      verifiableCredential.credentialSubject.provider
-        ?.split("#")[1]
-        .toLowerCase() ===
-      project?.projectMetadata.projectTwitter?.toLowerCase();
-  } else if (provider === "github") {
-    vcProviderMatchesProject =
-      verifiableCredential.credentialSubject.provider
-        ?.split("#")[1]
-        .toLowerCase() ===
-      project?.projectMetadata.projectGithub?.toLowerCase();
-  }
-  return vcProviderMatchesProject;
-}
-
-function vcIssuedToAddress(vc: VerifiableCredential, address: string) {
-  const vcIdSplit = vc.credentialSubject.id.split(":");
-  const addressFromId = vcIdSplit[vcIdSplit.length - 1];
-  return addressFromId === address;
-}
-
-async function isVerified(
-  data: {
-    verifiableCredential: VerifiableCredential;
-    provider: string;
-    project: Project | undefined;
-  },
-  deps: {
-    dataLayer: DataLayer;
-  }
-) {
-  const { verifiableCredential, provider, project } = data;
-  const { dataLayer } = deps;
-
-  const { isVerified: vcHasValidProof } = await dataLayer.query({
-    type: "verify-passport-credential",
-    credential: verifiableCredential,
-  });
-  const vcIssuedByValidIAMServer = verifiableCredential.issuer === IAM_SERVER;
-  const providerMatchesProject = vcProviderMatchesProject(
-    provider,
-    verifiableCredential,
-    project
-  );
-  const vcIssuedToAtLeastOneProjectOwner = (
-    project?.projectMetadata?.owners ?? []
-  ).some((owner) => vcIssuedToAddress(verifiableCredential, owner.address));
-
-  return vcHasValidProof &&
-    vcIssuedByValidIAMServer &&
-    providerMatchesProject &&
-    vcIssuedToAtLeastOneProjectOwner
-    ? VerifiedCredentialState.VALID
-    : VerifiedCredentialState.INVALID;
 }

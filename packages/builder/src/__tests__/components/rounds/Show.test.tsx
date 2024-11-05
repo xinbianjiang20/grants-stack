@@ -11,7 +11,9 @@ import {
   addressFrom,
   buildProjectMetadata,
   buildRound,
+  now,
   renderWrapped,
+  roundIdFrom,
 } from "../../../utils/test_utils";
 
 jest.mock("../../../actions/rounds");
@@ -24,8 +26,8 @@ jest.mock("react-router-dom", () => ({
 
 jest.mock("wagmi", () => ({
   ...jest.requireActual("wagmi"),
-  useSwitchNetwork: () => ({
-    switchNetwork: jest.fn(),
+  useSwitchChain: () => ({
+    switchChain: jest.fn(),
   }),
   useNetwork: () => ({
     chain: jest.fn(),
@@ -42,35 +44,37 @@ describe("<Show />", () => {
     });
 
     const pastRound = buildRound({
-      address: addressFrom(1),
-      applicationsStartTime: 0,
-      applicationsEndTime: 0,
-      roundStartTime: 0,
-      roundEndTime: 0,
+      id: roundIdFrom(2),
+      address: addressFrom(2),
+      applicationsStartTime: now - 7200,
+      applicationsEndTime: now - 3600,
+      roundStartTime: now - 3600,
+      roundEndTime: now - 600,
     });
 
     const futureRound = buildRound({
-      address: addressFrom(1),
-      applicationsStartTime: Date.now() / 1000 + 60 * 30,
-      applicationsEndTime: Date.now() / 1000 + 60 * 60,
-      roundStartTime: Date.now() / 1000 + 60 * 60,
-      roundEndTime: Date.now() / 1000 + 60 * 120,
+      id: roundIdFrom(3),
+      address: addressFrom(3),
+      applicationsStartTime: now + 3600,
+      applicationsEndTime: now + 7200,
+      roundStartTime: now + 7200,
+      roundEndTime: now + 12000,
     });
 
     store.dispatch(web3ChainIDLoaded(5));
     store.dispatch({
       type: "ROUNDS_ROUND_LOADED",
-      address: addressFrom(1),
+      id: roundIdFrom(1),
       round,
     });
     store.dispatch({
       type: "ROUNDS_ROUND_LOADED",
-      address: addressFrom(2),
+      id: roundIdFrom(2),
       round: pastRound,
     });
     store.dispatch({
       type: "ROUNDS_ROUND_LOADED",
-      address: addressFrom(3),
+      id: roundIdFrom(3),
       round: futureRound,
     });
   });
@@ -78,8 +82,8 @@ describe("<Show />", () => {
   describe("current round", () => {
     beforeEach(() => {
       (useParams as jest.Mock).mockReturnValue({
-        roundId: addressFrom(1),
-        chainId: 5,
+        roundId: roundIdFrom(1),
+        chainId: 10,
       });
     });
 
@@ -98,8 +102,7 @@ describe("<Show />", () => {
         store.dispatch({
           type: "PROJECTS_LOADED",
           payload: {
-            chainID: 1,
-            events: {},
+            chainID: 10,
           },
         });
 
@@ -145,7 +148,7 @@ describe("<Show />", () => {
         (loadRound as jest.Mock).mockReturnValue({ type: "TEST" });
         (unloadRounds as jest.Mock).mockReturnValue({ type: "TEST" });
 
-        store.dispatch({ type: "PROJECTS_LOADING", payload: 0 });
+        store.dispatch({ type: "PROJECTS_LOADING", payload: [10] });
 
         renderWrapped(<Show />, store);
 
@@ -169,8 +172,7 @@ describe("<Show />", () => {
         store.dispatch({
           type: "PROJECTS_LOADED",
           payload: {
-            chainID: 0,
-            events: {},
+            chainID: 10,
           },
         });
 
@@ -187,8 +189,7 @@ describe("<Show />", () => {
         store.dispatch({
           type: "PROJECTS_LOADED",
           payload: {
-            chainID: 0,
-            events: {},
+            chainIDs: [10],
           },
         });
 
@@ -206,8 +207,8 @@ describe("<Show />", () => {
   describe("past round", () => {
     beforeEach(() => {
       (useParams as jest.Mock).mockReturnValue({
-        roundId: addressFrom(2),
-        chainId: 5,
+        roundId: roundIdFrom(2),
+        chainId: 10,
       });
     });
 
@@ -224,8 +225,7 @@ describe("<Show />", () => {
       store.dispatch({
         type: "PROJECTS_LOADED",
         payload: {
-          chainID: 0,
-          events: {},
+          chainIDs: [10],
         },
       });
 
@@ -239,8 +239,8 @@ describe("<Show />", () => {
   describe("future round", () => {
     beforeEach(() => {
       (useParams as jest.Mock).mockReturnValue({
-        roundId: addressFrom(3),
-        chainId: 5,
+        roundId: roundIdFrom(3),
+        chainId: 10,
       });
     });
 
@@ -257,7 +257,7 @@ describe("<Show />", () => {
       store.dispatch({
         type: "PROJECTS_LOADED",
         payload: {
-          chainID: 0,
+          chainID: 10,
           events: {},
         },
       });

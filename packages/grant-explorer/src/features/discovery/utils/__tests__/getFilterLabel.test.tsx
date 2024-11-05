@@ -14,11 +14,19 @@ describe("getFilterLabel", () => {
       getFilterLabel({ status: "active", type: "", network: "" }).label
     ).toEqual("Active");
     expect(
-      getFilterLabel({ status: "", type: "MERKLE", network: "" }).label
+      getFilterLabel({
+        status: "",
+        type: "allov2.DonationVotingMerkleDistributionDirectTransferStrategy",
+        network: "",
+      }).label
     ).toEqual("Quadratic funding");
     // Filters out commas
     expect(
-      getFilterLabel({ status: "", type: ",DIRECT", network: "" }).label
+      getFilterLabel({
+        status: "",
+        type: "allov2.DirectGrantsSimpleStrategy",
+        network: "",
+      }).label
     ).toEqual("Direct grants");
   });
   it("Returns Multiple when many are selected from same category", async () => {
@@ -26,15 +34,23 @@ describe("getFilterLabel", () => {
       getFilterLabel({ status: "active,finished", type: "", network: "" }).label
     ).toEqual("Multiple");
     expect(
-      getFilterLabel({ status: "", type: "DIRECT,MERKLE", network: "" }).label
+      getFilterLabel({
+        status: "",
+        type: "allov2.DirectGrantsSimpleStrategy,allov2.DonationVotingMerkleDistributionDirectTransferStrategy",
+        network: "",
+      }).label
     ).toEqual("Multiple");
     expect(
       getFilterLabel({ status: "", type: "", network: "1,2" }).label
     ).toEqual("Multiple");
   });
-  it("Returns Multiple when many are selected from fifferent category", async () => {
+  it("Returns Multiple when many are selected from different category", async () => {
     expect(
-      getFilterLabel({ status: "active", type: "DIRECT", network: "" }).label
+      getFilterLabel({
+        status: "active",
+        type: "allov2.DirectGrantsSimpleStrategy",
+        network: "",
+      }).label
     ).toEqual("Multiple");
   });
 });

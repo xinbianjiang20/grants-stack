@@ -1,4 +1,3 @@
-import { ROUND_PAYOUT_DIRECT, ROUND_PAYOUT_MERKLE } from "common";
 import { getExplorerPageTitle } from "../getExplorerPageTitle";
 import { RoundStatus } from "../../hooks/useFilterRounds";
 
@@ -12,17 +11,17 @@ describe("getExplorerPageTitle", () => {
     expect(
       getExplorerPageTitle({
         status: "",
-        type: ROUND_PAYOUT_MERKLE,
+        type: "allov2.DonationVotingMerkleDistributionDirectTransferStrategy",
         network: "",
       })
-    ).toEqual("Quadratic Funding rounds");
+    ).toEqual("Quadratic funding");
     expect(
       getExplorerPageTitle({
         status: "",
-        type: ROUND_PAYOUT_DIRECT,
+        type: "allov2.DirectGrantsSimpleStrategy",
         network: "",
       })
-    ).toEqual("Direct Grants rounds");
+    ).toEqual("Direct grants");
     expect(
       getExplorerPageTitle({
         status: RoundStatus.taking_applications,
@@ -49,7 +48,7 @@ describe("getExplorerPageTitle", () => {
     expect(
       getExplorerPageTitle({
         status: "active,finished",
-        type: ROUND_PAYOUT_MERKLE,
+        type: "allov2.DonationVotingMerkleDistributionDirectTransferStrategy",
         network: "",
       })
     ).toEqual("Multiple filters");
